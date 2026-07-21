@@ -1,16 +1,16 @@
 {
   "domain": "flipped_energy",
   "name": "Flipped Energy",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@flcdrg"
   ],
   "config_flow": true,
-  "after_dependencies": [
-    "recorder"
-  ],
-  "requirements": [],
   "documentation": "https://github.com/flcdrg/flipped_energy_ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/flcdrg/flipped_energy_ha/issues",
+  "requirements": [],
   "version": "0.1.1"
 }
