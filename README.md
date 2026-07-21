@@ -88,13 +88,13 @@ Example card (hourly):
 ```yaml
 type: statistics-graph
 entities:
-	- "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_hourly_import_kwh"
+  - "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_hourly_import_kwh"
 title: Flipped Hourly Import Usage
 days_to_show: 2
 period: hour
 chart_type: bar
 stat_types:
-	- mean
+  - mean
 ```
 
 Example card (daily):
@@ -102,13 +102,13 @@ Example card (daily):
 ```yaml
 type: statistics-graph
 entities:
-	- "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_daily_import_kwh"
+  - "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_daily_import_kwh"
 title: Flipped Daily Import Usage
 days_to_show: 30
 period: day
 chart_type: bar
 stat_types:
-	- mean
+  - mean
 ```
 
 ## Troubleshooting
