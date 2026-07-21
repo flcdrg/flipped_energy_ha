@@ -4,6 +4,16 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# Bootstrap dependencies when running develop directly.
+if ! python3 - <<'PY' >/dev/null 2>&1
+import homeassistant  # noqa: F401
+import hass_frontend  # noqa: F401
+PY
+then
+    echo "Missing Python dependencies, running scripts/setup..."
+    "${PWD}/scripts/setup"
+fi
+
 # Create config dir if not present
 if [[ ! -d "${PWD}/config" ]]; then
     mkdir -p "${PWD}/config"
@@ -11,7 +21,7 @@ if [[ ! -d "${PWD}/config" ]]; then
 fi
 
 # Set the path to custom_components
-## This let's us have the structure we want <root>/custom_components/integration_blueprint
+## This let's us have the structure we want <root>/custom_components/flipped_energy
 ## while at the same time have Home Assistant configuration inside <root>/config
 ## without resulting to symlinks.
 export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
