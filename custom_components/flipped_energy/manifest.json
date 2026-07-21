@@ -5,6 +5,9 @@
     "@flcdrg"
   ],
   "config_flow": true,
+  "after_dependencies": [
+    "recorder"
+  ],
   "requirements": [],
   "documentation": "https://github.com/flcdrg/flipped_energy_ha",
   "iot_class": "cloud_polling",
