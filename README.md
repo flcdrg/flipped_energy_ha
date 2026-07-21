@@ -27,6 +27,7 @@ File | Purpose | Documentation
 
 These are some next steps you may want to look into:
 - Run `./scripts/test` to execute the included integration tests, and extend coverage using [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component).
+- Run `./scripts/live_portal_scrape.py --username you@example.com` to do a real-site scrape smoke test and print the normalized snapshot JSON (password will be prompted securely). Add `--include-plan`, `--include-usage`, and/or `--include-invoices` to target specific pages.
 - Add brand images (logo/icon).
 - Create your first release.
 - Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).

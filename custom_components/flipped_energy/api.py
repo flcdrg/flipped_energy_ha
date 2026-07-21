@@ -10,10 +10,9 @@ import socket
 from contextlib import suppress
 from http import HTTPStatus
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 import aiohttp
-from bs4 import BeautifulSoup
 
 from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
@@ -95,33 +94,17 @@ def _verify_response_or_raise(response: aiohttp.ClientResponse) -> None:
 class IntegrationBlueprintApiClient:
     """Flipped Energy authenticated scraping client."""
 
-    _BASE_URL = "https://flipped.energy"
-    _LOGIN_PATH = "/accounts/login"
-    _VALIDATE_PATH = "/accounts/"
-    _PORTAL_PATHS = {
-        "plan": "/accounts/plan",
-        "usage": "/accounts/usage",
-        "invoices": "/accounts/invoices",
-    }
-    _LABELS_USAGE_TODAY = ("usage today", "today usage", "daily usage")
-    _LABELS_TOTAL_USAGE = ("total usage", "usage this period", "total consumption")
-    _LABELS_TOTAL_FEEDIN = ("total feed-in", "total feed in", "feed in")
-    _LABELS_AMOUNT_DUE = ("amount due", "total due", "current due")
-    _LABELS_IMPORT_RATE = ("import rate", "usage rate", "energy rate")
-    _LABELS_FEEDIN_RATE = ("feed-in rate", "feed in tariff", "solar feed-in")
-    _LABELS_PERIOD_START = ("period start", "billing start", "from")
-    _LABELS_PERIOD_END = ("period end", "billing end", "to")
-    _PLAN_NAME_LABELS = ("plan name", "current plan")
-    _STOP_LABELS = (
-        "import rate",
-        "feed-in rate",
-        "feed in tariff",
-        "usage today",
-        "total usage",
-        "total feed-in",
-        "amount due",
-        "period start",
-        "period end",
+    _API_BASE_URL = "https://api.flipped.energy"
+    _API_LOGIN_PATH = "/user/login"
+    _API_VALIDATE_PATH = "/api/Tracing/correlation"
+    _API_USAGE_DAILY_PATH = "/Usage/usage/projectreads/daily"
+    _API_SNAPSHOT_PATHS = (
+        "/MyAccount/GetAccountData",
+        "/MyAccount/ProjectAccountData",
+        "/MyAccount/landingpage",
+        "/Billing/billing/index",
+        "/Usage/usage/getreads",
+        "/Usage/usage/getsettlements",
     )
 
     def __init__(
@@ -136,6 +119,7 @@ class IntegrationBlueprintApiClient:
         self._password = password
         self._session = session
         self._authenticated = False
+        self._auth_token: str | None = None
         enabled = enabled_pages or {
             "plan": True,
             "usage": True,
@@ -146,25 +130,23 @@ class IntegrationBlueprintApiClient:
         self._enabled_pages = enabled
 
     async def async_get_data(self) -> Any:
-        """Authenticate and scrape a normalized account snapshot."""
+        """Authenticate and fetch a normalized account snapshot from APIs."""
         await self._ensure_authenticated()
 
         try:
-            pages = {
-                name: await self._fetch_page(path)
-                for name, path in self._PORTAL_PATHS.items()
-                if self._enabled_pages.get(name, False)
-            }
+            snapshot = await self._augment_snapshot_from_api({})
         except IntegrationBlueprintApiClientAuthenticationError:
             self._authenticated = False
             await self._ensure_authenticated(force=True)
-            pages = {
-                name: await self._fetch_page(path)
-                for name, path in self._PORTAL_PATHS.items()
-                if self._enabled_pages.get(name, False)
-            }
+            snapshot = await self._augment_snapshot_from_api({})
 
-        snapshot = self._build_snapshot(pages)
+        missing_required_fields = self._missing_required_fields(snapshot)
+        if missing_required_fields:
+            raise IntegrationBlueprintApiClientExtractionError(
+                "Unable to extract required fields from API responses: "
+                + ", ".join(missing_required_fields)
+            )
+
         snapshot[SNAPSHOT_AUTH_OK] = True
         snapshot[SNAPSHOT_DATA_FRESH] = True
         snapshot[SNAPSHOT_LAST_SUCCESSFUL_SCRAPE] = dt.datetime.now(
@@ -183,108 +165,56 @@ class IntegrationBlueprintApiClient:
         self._authenticated = True
 
     async def _is_session_valid(self) -> bool:
-        """Check whether the current session can access the account area."""
+        """Check whether the current bearer token is still accepted by the API."""
+        if not self._auth_token:
+            return False
+
         async with self._session.get(
-            urljoin(self._BASE_URL, self._VALIDATE_PATH),
-            allow_redirects=True,
+            urljoin(self._API_BASE_URL, self._API_VALIDATE_PATH),
+            allow_redirects=False,
+            headers={"Authorization": f"Bearer {self._auth_token}"},
         ) as response:
-            final_url = str(response.url)
             await response.read()
-            if "/accounts/login" in final_url:
-                return False
             return response.status == HTTPStatus.OK
 
     async def _login(self) -> None:
-        """Authenticate against the portal."""
-        login_url = urljoin(self._BASE_URL, self._LOGIN_PATH)
-
-        login_page = await self._session.get(login_url, allow_redirects=True)
-        _verify_response_or_raise(login_page)
-        html = await login_page.text()
-        csrf_token = self._extract_csrf_token(html)
-
-        login_payload = {
-            "username": self._username,
-            "email": self._username,
-            "password": self._password,
-        }
-        if csrf_token is not None:
-            login_payload["__RequestVerificationToken"] = csrf_token
+        """Authenticate against the API used by the Flipped portal SPA."""
+        login_url = urljoin(self._API_BASE_URL, self._API_LOGIN_PATH)
 
         response = await self._session.post(
             login_url,
-            data=login_payload,
-            allow_redirects=True,
+            json={
+                "email": self._username,
+                "password": self._password,
+            },
+            allow_redirects=False,
+            headers={"Content-Type": "application/json"},
         )
-        if response.status in (401, 403):
+
+        if response.status in (400, 401, 403):
             raise IntegrationBlueprintApiClientAuthenticationError(
                 "Invalid credentials"
             )
 
-        if "/accounts/login" in str(response.url):
+        _verify_response_or_raise(response)
+
+        payload = await response.json(content_type=None)
+        token = payload.get("token") if isinstance(payload, dict) else None
+        if not token or not isinstance(token, str):
             raise IntegrationBlueprintApiClientAuthenticationError(
-                "Failed to authenticate with portal"
+                "Login succeeded but no auth token was returned"
             )
+
+        self._auth_token = token
 
         is_valid = await self._is_session_valid()
         if not is_valid:
             raise IntegrationBlueprintApiClientAuthenticationError(
-                "Authenticated session is not valid"
+                "Authenticated token is not valid"
             )
 
-    async def _fetch_page(self, path: str) -> str:
-        """Fetch and return a rendered page document."""
-        response = await self._session.get(
-            urljoin(self._BASE_URL, path), allow_redirects=True
-        )
-        if "/accounts/login" in str(response.url):
-            raise IntegrationBlueprintApiClientAuthenticationError("Session expired")
-
-        _verify_response_or_raise(response)
-        return await response.text()
-
-    def _build_snapshot(self, pages: dict[str, str]) -> dict[str, Any]:
-        """Extract normalized values from portal pages."""
-        plan_page = pages.get("plan", "")
-        usage_page = pages.get("usage", "")
-        invoices_page = pages.get("invoices", "")
-
-        snapshot: dict[str, Any] = {
-            SNAPSHOT_PLAN_NAME: self._extract_plan_name(plan_page),
-            SNAPSHOT_USAGE_TODAY_KWH: self._extract_energy_value(
-                usage_page,
-                labels=self._LABELS_USAGE_TODAY,
-            ),
-            SNAPSHOT_TOTAL_USAGE_KWH: self._extract_energy_value(
-                usage_page,
-                labels=self._LABELS_TOTAL_USAGE,
-            ),
-            SNAPSHOT_TOTAL_FEEDIN_KWH: self._extract_energy_value(
-                usage_page,
-                labels=self._LABELS_TOTAL_FEEDIN,
-            ),
-            SNAPSHOT_AMOUNT_DUE_AUD: self._extract_money_value(
-                invoices_page,
-                labels=self._LABELS_AMOUNT_DUE,
-            ),
-            SNAPSHOT_IMPORT_RATE_CENTS: self._extract_rate_value(
-                plan_page,
-                labels=self._LABELS_IMPORT_RATE,
-            ),
-            SNAPSHOT_FEEDIN_RATE_CENTS: self._extract_rate_value(
-                plan_page,
-                labels=self._LABELS_FEEDIN_RATE,
-            ),
-            SNAPSHOT_BILLING_PERIOD_START: self._extract_period_value(
-                invoices_page,
-                labels=self._LABELS_PERIOD_START,
-            ),
-            SNAPSHOT_BILLING_PERIOD_END: self._extract_period_value(
-                invoices_page,
-                labels=self._LABELS_PERIOD_END,
-            ),
-        }
-
+    def _missing_required_fields(self, snapshot: dict[str, Any]) -> list[str]:
+        """Return the required snapshot keys that are currently missing."""
         required_fields: list[str] = []
         if self._enabled_pages.get("usage", False):
             required_fields.extend(
@@ -305,135 +235,381 @@ class IntegrationBlueprintApiClient:
                 ]
             )
 
-        missing_required_fields = [
-            key for key in required_fields if snapshot.get(key) is None
-        ]
+        return [key for key in required_fields if snapshot.get(key) is None]
 
-        if missing_required_fields:
-            raise IntegrationBlueprintApiClientExtractionError(
-                "Unable to extract required fields from portal pages: "
-                + ", ".join(missing_required_fields)
+    async def _augment_snapshot_from_api(
+        self, snapshot: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Fill missing snapshot fields from authenticated API responses."""
+        payloads_by_path = await self._fetch_api_snapshot_payloads()
+        if not payloads_by_path:
+            return snapshot
+
+        mapped = self._map_snapshot_from_known_api_payloads(payloads_by_path)
+        for key, value in mapped.items():
+            if snapshot.get(key) is None and value is not None:
+                snapshot[key] = value
+
+        # Keep a final fuzzy pass to tolerate minor upstream schema changes.
+        payloads = list(payloads_by_path.values())
+        key_patterns: dict[str, tuple[tuple[str, ...], ...]] = {
+            SNAPSHOT_AMOUNT_DUE_AUD: (
+                ("amount", "due"),
+                ("amount", "owing"),
+                ("balance", "owing"),
+            ),
+            SNAPSHOT_IMPORT_RATE_CENTS: (("import", "rate"),),
+            SNAPSHOT_FEEDIN_RATE_CENTS: (("feed", "in", "tariff"),),
+        }
+        for snapshot_key, patterns in key_patterns.items():
+            if snapshot.get(snapshot_key) is not None:
+                continue
+            candidate = self._find_value_by_key_patterns(
+                payloads,
+                patterns,
+                self._coerce_float,
             )
+            if candidate is None:
+                continue
+            if snapshot_key in (SNAPSHOT_IMPORT_RATE_CENTS, SNAPSHOT_FEEDIN_RATE_CENTS):
+                candidate = self._normalize_rate_candidate(candidate)
+            snapshot[snapshot_key] = candidate
 
         return snapshot
 
-    def _extract_csrf_token(self, html: str) -> str | None:
-        """Extract a CSRF token if present on login page."""
-        soup = BeautifulSoup(html, "html.parser")
-        for name in (
-            "__RequestVerificationToken",
-            "csrfmiddlewaretoken",
-            "_token",
-        ):
-            token_input = soup.find("input", attrs={"name": name})
-            if token_input and token_input.get("value"):
-                return str(token_input["value"])
+    async def _fetch_api_snapshot_payloads(self) -> dict[str, Any]:
+        """Fetch candidate API payloads that may contain account snapshot data."""
+        payloads_by_path: dict[str, Any] = {}
+        for path in self._API_SNAPSHOT_PATHS:
+            try:
+                payload = await self._fetch_api_json(path)
+            except IntegrationBlueprintApiClientError:
+                continue
+            if payload is not None:
+                payloads_by_path[path] = payload
+
+        # Daily usage is time-windowed in the web app; call explicitly with
+        # rolling windows to reliably obtain rows for recent usage periods.
+        usage_rows = await self._fetch_daily_usage_rows()
+        if usage_rows:
+            payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
+
+        return payloads_by_path
+
+    async def _fetch_daily_usage_rows(self) -> list[dict[str, Any]]:
+        """Fetch project daily usage rows using rolling UTC date windows."""
+        now = dt.datetime.now(dt.UTC)
+        windows = [
+            (now - dt.timedelta(days=31), now),
+            (now - dt.timedelta(days=62), now - dt.timedelta(days=31)),
+            (now - dt.timedelta(days=14), now),
+        ]
+
+        collected: list[dict[str, Any]] = []
+        for start, end in windows:
+            query = urlencode(
+                {
+                    "start": self._format_api_datetime(start),
+                    "end": self._format_api_datetime(end),
+                }
+            )
+            path_with_query = f"{self._API_USAGE_DAILY_PATH}?{query}"
+            try:
+                payload = await self._fetch_api_json(path_with_query)
+            except IntegrationBlueprintApiClientError:
+                continue
+
+            if isinstance(payload, list):
+                for row in payload:
+                    if isinstance(row, dict):
+                        collected.append(row)
+
+            if collected:
+                break
+
+        return collected
+
+    def _format_api_datetime(self, value: dt.datetime) -> str:
+        """Format UTC datetimes like the portal API query parameters."""
+        return (
+            value.astimezone(dt.UTC)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+
+    def _map_snapshot_from_known_api_payloads(
+        self,
+        payloads_by_path: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Map known API endpoint payloads into our normalized snapshot."""
+        snapshot: dict[str, Any] = {}
+
+        project_data = payloads_by_path.get("/MyAccount/ProjectAccountData")
+        account = self._select_primary_account(project_data)
+        if account:
+            snapshot[SNAPSHOT_PLAN_NAME] = self._coerce_text(
+                account.get("productName")
+            ) or self._coerce_text(((account.get("product") or {}).get("name")))
+
+            rates = self._extract_rates_from_account(account)
+            snapshot[SNAPSHOT_IMPORT_RATE_CENTS] = rates.get("import_rate_cents")
+            snapshot[SNAPSHOT_FEEDIN_RATE_CENTS] = rates.get("feedin_rate_cents")
+
+            amount_due = self._extract_amount_due_from_account(account)
+            if amount_due is not None:
+                snapshot[SNAPSHOT_AMOUNT_DUE_AUD] = amount_due
+
+            issue_date = self._coerce_text(account.get("nextBillIssueDate"))
+            due_date = self._coerce_text(account.get("nextBillDueDate"))
+            if issue_date and snapshot.get(SNAPSHOT_BILLING_PERIOD_START) is None:
+                snapshot[SNAPSHOT_BILLING_PERIOD_START] = issue_date[:10]
+            if due_date and snapshot.get(SNAPSHOT_BILLING_PERIOD_END) is None:
+                snapshot[SNAPSHOT_BILLING_PERIOD_END] = due_date[:10]
+
+        usage_rows = payloads_by_path.get(self._API_USAGE_DAILY_PATH)
+        usage_metrics = self._extract_usage_metrics(usage_rows)
+        snapshot.update(usage_metrics)
+
+        return snapshot
+
+    def _select_primary_account(self, project_data: Any) -> dict[str, Any] | None:
+        """Select the primary account payload from ProjectAccountData."""
+        if not isinstance(project_data, dict):
+            return None
+        accounts = project_data.get("accounts")
+        if not isinstance(accounts, list) or not accounts:
+            return None
+        first = accounts[0]
+        return first if isinstance(first, dict) else None
+
+    def _extract_rates_from_account(
+        self, account: dict[str, Any]
+    ) -> dict[str, float | None]:
+        """Extract import/feed-in rates (c/kWh) from account billing units."""
+        current_plan = (account.get("product") or {}).get("currentPlan")
+        if not isinstance(current_plan, dict):
+            return {
+                "import_rate_cents": None,
+                "feedin_rate_cents": None,
+            }
+
+        billing_units = current_plan.get("billingUnits")
+        if not isinstance(billing_units, list):
+            return {
+                "import_rate_cents": None,
+                "feedin_rate_cents": None,
+            }
+
+        import_weighted_total = 0.0
+        import_weight_total = 0.0
+        import_flat_values: list[float] = []
+        feed_in_values: list[float] = []
+
+        for unit in billing_units:
+            if not isinstance(unit, dict):
+                continue
+
+            charge = self._coerce_float(unit.get("chargePerKwh"))
+            if charge is None:
+                continue
+
+            unit_type = self._coerce_text(unit.get("billingUnitType")) or ""
+            name = (self._coerce_text(unit.get("name")) or "").lower()
+
+            if unit_type == "FeedInTariff" or "feed" in name:
+                feed_in_values.append(abs(charge * 100))
+                continue
+
+            if charge <= 0:
+                continue
+
+            duration = self._billing_unit_duration_minutes(unit)
+            import_flat_values.append(charge * 100)
+            if duration is not None and duration > 0:
+                import_weighted_total += charge * 100 * duration
+                import_weight_total += duration
+
+        import_rate_cents: float | None = None
+        if import_weight_total > 0:
+            import_rate_cents = import_weighted_total / import_weight_total
+        elif import_flat_values:
+            import_rate_cents = sum(import_flat_values) / len(import_flat_values)
+
+        feedin_rate_cents = min(feed_in_values) if feed_in_values else None
+
+        return {
+            "import_rate_cents": round(import_rate_cents, 6)
+            if import_rate_cents is not None
+            else None,
+            "feedin_rate_cents": round(feedin_rate_cents, 6)
+            if feedin_rate_cents is not None
+            else None,
+        }
+
+    def _billing_unit_duration_minutes(self, unit: dict[str, Any]) -> int | None:
+        """Return billing unit time-of-day duration in minutes."""
+        start = unit.get("timeOfDayStartMinutes")
+        end = unit.get("timeOfDayEndMinutes")
+        if not isinstance(start, int) or not isinstance(end, int):
+            return None
+        if start == end:
+            return 24 * 60
+        if end > start:
+            return end - start
+        return (24 * 60 - start) + end
+
+    def _extract_amount_due_from_account(self, account: dict[str, Any]) -> float | None:
+        """Extract amount due from account/invoice fields when available."""
+        for key, value in self._walk_payload_key_values(account):
+            normalized = self._normalize_key(key)
+            if normalized in {
+                "amountdue",
+                "totalamountdue",
+                "amountowing",
+                "balanceowing",
+                "currentdue",
+            }:
+                candidate = self._coerce_float(value)
+                if candidate is not None:
+                    return candidate
+
+        is_overdue = account.get("isOverdue")
+        if isinstance(is_overdue, bool) and not is_overdue:
+            return 0.0
+
         return None
 
-    def _extract_plan_name(self, html: str) -> str | None:
-        """Extract a plan name from known labels or title fallback."""
-        value = self._extract_labeled_text(
-            html,
-            labels=self._PLAN_NAME_LABELS,
-            max_len=80,
-        )
-        if value:
-            return value
+    def _extract_usage_metrics(self, usage_rows: Any) -> dict[str, Any]:
+        """Extract usage totals and billing window from projectreads/daily rows."""
+        if not isinstance(usage_rows, list):
+            return {}
 
-        soup = BeautifulSoup(html, "html.parser")
-        page_title = soup.title.string if soup.title and soup.title.string else None
-        if not page_title:
-            return None
-        plan_title = page_title.replace("- Flipped Energy", "").strip()
-        if plan_title.lower() == "plan details":
-            return None
-        return plan_title
+        imports: list[tuple[dt.date, float]] = []
+        exports: list[tuple[dt.date, float]] = []
+        all_dates: list[dt.date] = []
 
-    def _extract_money_value(self, html: str, labels: tuple[str, ...]) -> float | None:
-        """Extract a dollar amount near matching labels."""
-        return self._extract_number_near_labels(
-            html,
-            labels,
-            pattern=r"\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)",
-        )
-
-    def _extract_rate_value(self, html: str, labels: tuple[str, ...]) -> float | None:
-        """Extract cents per kWh rate near labels."""
-        return self._extract_number_near_labels(
-            html,
-            labels,
-            pattern=r"([0-9]+(?:\.[0-9]+)?)\s*(?:c|¢)\s*/\s*kwh",
-        )
-
-    def _extract_energy_value(self, html: str, labels: tuple[str, ...]) -> float | None:
-        """Extract kWh values near labels."""
-        return self._extract_number_near_labels(
-            html,
-            labels,
-            pattern=r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*kwh",
-        )
-
-    def _extract_period_value(self, html: str, labels: tuple[str, ...]) -> str | None:
-        """Extract period boundary text for display as diagnostics."""
-        return self._extract_labeled_text(html, labels=labels, max_len=32)
-
-    def _extract_labeled_text(
-        self,
-        html: str,
-        labels: tuple[str, ...],
-        max_len: int,
-    ) -> str | None:
-        """Extract short human-readable value following a label."""
-        text = self._to_text(html)
-        for label in labels:
-            regex = re.compile(
-                rf"{re.escape(label)}\s*[:\-]?\s*([A-Za-z0-9\s\-/,.]+)",
-                re.IGNORECASE,
-            )
-            match = regex.search(text)
-            if not match:
+        for row in usage_rows:
+            if not isinstance(row, dict):
                 continue
-            value = " ".join(match.group(1).split())
-            value = self._trim_at_known_labels(value)
-            if 0 < len(value) <= max_len:
-                return value
+            stamp = self._coerce_text(row.get("time"))
+            usage_type = (self._coerce_text(row.get("usageType")) or "").lower()
+            value = self._coerce_float(row.get("value"))
+            if not stamp or value is None:
+                continue
+            parsed_date = self._parse_iso_date(stamp)
+            if parsed_date is None:
+                continue
+
+            all_dates.append(parsed_date)
+            if usage_type == "import":
+                imports.append((parsed_date, value))
+            elif usage_type == "export":
+                exports.append((parsed_date, abs(value)))
+
+        if not all_dates:
+            return {}
+
+        metrics: dict[str, Any] = {
+            SNAPSHOT_TOTAL_USAGE_KWH: round(sum(v for _, v in imports), 6)
+            if imports
+            else 0.0,
+            SNAPSHOT_TOTAL_FEEDIN_KWH: round(sum(v for _, v in exports), 6)
+            if exports
+            else 0.0,
+            SNAPSHOT_BILLING_PERIOD_START: min(all_dates).isoformat(),
+            SNAPSHOT_BILLING_PERIOD_END: max(all_dates).isoformat(),
+        }
+
+        latest_date = max((d for d, _ in imports), default=max(all_dates))
+        usage_today = sum(v for d, v in imports if d == latest_date)
+        metrics[SNAPSHOT_USAGE_TODAY_KWH] = round(usage_today, 6)
+        return metrics
+
+    def _parse_iso_date(self, value: str) -> dt.date | None:
+        """Parse a timestamp/date into a date value."""
+        normalized = value.replace("Z", "+00:00")
+        with suppress(ValueError):
+            return dt.datetime.fromisoformat(normalized).date()
+        with suppress(ValueError):
+            return dt.date.fromisoformat(value[:10])
         return None
 
-    def _trim_at_known_labels(self, value: str) -> str:
-        """Trim value when adjacent flattened text starts another known field."""
-        lower_value = value.lower()
-        cut_index = len(value)
-        for stop_label in self._STOP_LABELS:
-            idx = lower_value.find(stop_label)
-            if idx > 0:
-                cut_index = min(cut_index, idx)
-        return value[:cut_index].strip(" :-,")
+    async def _fetch_api_json(self, path: str) -> Any:
+        """Fetch JSON from an authenticated API path."""
+        headers: dict[str, str] | None = None
+        if self._auth_token:
+            headers = {"Authorization": f"Bearer {self._auth_token}"}
 
-    def _extract_number_near_labels(
+        return await self._api_wrapper(
+            method="GET",
+            url=urljoin(self._API_BASE_URL, path),
+            headers=headers,
+        )
+
+    def _find_value_by_key_patterns(
         self,
-        html: str,
-        labels: tuple[str, ...],
-        pattern: str,
-    ) -> float | None:
-        """Extract a numeric value found near one of the provided labels."""
-        text = self._to_text(html)
-        for label in labels:
-            regex = re.compile(
-                rf"{re.escape(label)}[^\n]{{0,80}}?{pattern}",
-                re.IGNORECASE,
-            )
-            match = regex.search(text)
-            if not match:
+        payloads: list[Any],
+        patterns: tuple[tuple[str, ...], ...],
+        parser,
+    ) -> Any | None:
+        """Find the first value whose key matches one pattern and parses cleanly."""
+        for key, value in self._walk_payload_key_values(payloads):
+            normalized_key = self._normalize_key(key)
+            if not any(
+                all(part in normalized_key for part in pattern) for pattern in patterns
+            ):
                 continue
-            raw = match.group(1).replace(",", "")
+            parsed = parser(value)
+            if parsed is not None:
+                return parsed
+        return None
+
+    def _walk_payload_key_values(self, payload: Any):
+        """Yield (key, value) pairs recursively from nested payload structures."""
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                if isinstance(key, str):
+                    yield key, value
+                yield from self._walk_payload_key_values(value)
+            return
+        if isinstance(payload, list):
+            for item in payload:
+                yield from self._walk_payload_key_values(item)
+
+    def _normalize_key(self, key: str) -> str:
+        """Normalize payload keys for fuzzy semantic matching."""
+        return re.sub(r"[^a-z0-9]", "", key.lower())
+
+    def _coerce_float(self, value: Any) -> float | None:
+        """Convert a scalar to float if possible."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            match = re.search(r"-?[0-9][0-9,]*(?:\.[0-9]+)?", value)
+            if not match:
+                return None
+            raw = match.group(0).replace(",", "")
             with suppress(ValueError):
                 return float(raw)
         return None
 
-    def _to_text(self, html: str) -> str:
-        """Flatten HTML to normalized text for resilient matching."""
-        soup = BeautifulSoup(html, "html.parser")
-        return " ".join(soup.get_text(separator=" ", strip=True).split())
+    def _coerce_text(self, value: Any) -> str | None:
+        """Convert a scalar to trimmed text if possible."""
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        return text
+
+    def _normalize_rate_candidate(self, value: float) -> float:
+        """Normalize API rate values into cents/kWh when needed."""
+        # Some APIs use dollars/kWh (e.g. 0.295); sensors expect cents/kWh.
+        if 0 < value < 2:
+            return round(value * 100, 6)
+        return value
 
     async def _api_wrapper(
         self,
