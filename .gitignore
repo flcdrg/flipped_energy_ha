@@ -18,3 +18,4 @@ config/*
 !config/configuration.yaml
 
 *.har
+.DS_Store
