@@ -1,18 +1,4 @@
-# Notice
-
-The component and platforms in this repository are not meant to be used by a
-user, but as a "blueprint" that custom component developers can build
-upon, to make more awesome stuff.
-
-HAVE FUN! 😎
-
-## Why?
-
-This is simple, by having custom_components look (README + structure) the same
-it is easier for developers to help each other and for users to start using them.
-
-If you are a developer and you want to add things to this "blueprint" that you think more
-developers will have use for, please open a PR to add it :)
+# Flipped Energy integration for Home Assistant
 
 ## What?
 
@@ -32,28 +18,15 @@ File | Purpose | Documentation
 `requirements_lint.txt` | Python packages used to lint this integration (installed by the Lint CI job). | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
 `requirements_common.txt` | Python packages common to CI and local dev, installed first so any pip upgrade completes before other dependencies (e.g. a modern pip). | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
 
-## Dependency updates
-
-This template ships with configuration for **two** dependency update tools. Pick
-**one** and remove or disable the other:
-
-- **Renovate** (`.github/renovate.json`) is enabled by default.
-- **Dependabot** (`.github/_dependabot.yml`) is included but disabled — the `_`
-  prefix means GitHub ignores it. To use Dependabot instead, rename the file
-  back to `.github/dependabot.yml` and delete `.github/renovate.json`.
-
 ## How?
 
-1. Create a new repository in GitHub, using this repository as a template by clicking the "Use this template" button in the GitHub UI.
-1. Open your new repository in Visual Studio Code devcontainer (Preferably with the "`Dev Containers: Clone Repository in Named Container Volume...`" option).
-1. Rename all instances of the `flipped_energy` to `custom_components/<your_integration_domain>` (e.g. `custom_components/awesome_integration`).
-1. Rename all instances of the `Flipped Energy` to `<Your Integration Name>` (e.g. `Awesome Integration`).
+
 1. Run the `scripts/develop` to start HA and test out your new integration.
 
 ## Next steps
 
 These are some next steps you may want to look into:
-- Add tests to your integration, [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component) can help you get started.
+- Run `./scripts/test` to execute the included integration tests, and extend coverage using [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component).
 - Add brand images (logo/icon).
 - Create your first release.
 - Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).

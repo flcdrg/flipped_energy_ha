@@ -1,8 +1,8 @@
 """
-Custom integration to integrate flipped_energy with Home Assistant.
+Custom integration to integrate Flipped Energy with Home Assistant.
 
 For more details about this integration, please refer to
-https://github.com/ludeeus/flipped_energy
+https://github.com/flcdrg/flipped_energy_ha
 """
 
 from __future__ import annotations
