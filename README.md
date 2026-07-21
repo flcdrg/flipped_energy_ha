@@ -133,3 +133,12 @@ Useful references:
 - Integration implementation: `custom_components/flipped_energy`
 - API documentation in this repo: `docs/README.md`
 - Contribution guide: `CONTRIBUTING.md`
+
+### Git pre-commit hook
+
+Ensure Python lint (ruff) is run before each commit:
+
+```bash
+git config --local hook.lint.event pre-commit
+git config --local hook.lint.command "python3 -m ruff check ."
+```

@@ -9,10 +9,13 @@ import re
 import socket
 from contextlib import suppress
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urljoin
 
 import aiohttp
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
@@ -24,12 +27,12 @@ from .const import (
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
     SNAPSHOT_PLAN_NAME,
+    SNAPSHOT_TOTAL_FEEDIN_KWH,
+    SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_DAILY_ROWS,
     SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
-    SNAPSHOT_TOTAL_FEEDIN_KWH,
-    SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_TODAY_KWH,
 )
 
@@ -111,6 +114,7 @@ class IntegrationBlueprintApiClient:
         "/Usage/usage/getreads",
         "/Usage/usage/getsettlements",
     )
+    _RATE_DOLLARS_THRESHOLD = 2
 
     def __init__(
         self,
@@ -159,7 +163,7 @@ class IntegrationBlueprintApiClient:
         ).isoformat()
         return snapshot
 
-    async def _ensure_authenticated(self, force: bool = False) -> None:
+    async def _ensure_authenticated(self, *, force: bool = False) -> None:
         """Ensure portal session is authenticated."""
         if self._authenticated and not force:
             is_valid = await self._is_session_valid()
@@ -197,26 +201,23 @@ class IntegrationBlueprintApiClient:
         )
 
         if response.status in (400, 401, 403):
-            raise IntegrationBlueprintApiClientAuthenticationError(
-                "Invalid credentials"
-            )
+            msg = "Invalid credentials"
+            raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
         _verify_response_or_raise(response)
 
         payload = await response.json(content_type=None)
         token = payload.get("token") if isinstance(payload, dict) else None
         if not token or not isinstance(token, str):
-            raise IntegrationBlueprintApiClientAuthenticationError(
-                "Login succeeded but no auth token was returned"
-            )
+            msg = "Login succeeded but no auth token was returned"
+            raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
         self._auth_token = token
 
         is_valid = await self._is_session_valid()
         if not is_valid:
-            raise IntegrationBlueprintApiClientAuthenticationError(
-                "Authenticated token is not valid"
-            )
+            msg = "Authenticated token is not valid"
+            raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
     def _missing_required_fields(self, snapshot: dict[str, Any]) -> list[str]:
         """Return the required snapshot keys that are currently missing."""
@@ -329,9 +330,7 @@ class IntegrationBlueprintApiClient:
                 continue
 
             if isinstance(payload, list):
-                for row in payload:
-                    if isinstance(row, dict):
-                        collected.append(row)
+                collected.extend(row for row in payload if isinstance(row, dict))
 
             if collected:
                 break
@@ -362,7 +361,7 @@ class IntegrationBlueprintApiClient:
         if account:
             snapshot[SNAPSHOT_PLAN_NAME] = self._coerce_text(
                 account.get("productName")
-            ) or self._coerce_text(((account.get("product") or {}).get("name")))
+            ) or self._coerce_text((account.get("product") or {}).get("name"))
 
             rates = self._extract_rates_from_account(account)
             snapshot[SNAPSHOT_IMPORT_RATE_CENTS] = rates.get("import_rate_cents")
@@ -621,7 +620,7 @@ class IntegrationBlueprintApiClient:
         self,
         payloads: list[Any],
         patterns: tuple[tuple[str, ...], ...],
-        parser,
+        parser: Callable[[Any], float | None],
     ) -> Any | None:
         """Find the first value whose key matches one pattern and parses cleanly."""
         for key, value in self._walk_payload_key_values(payloads):
@@ -635,7 +634,7 @@ class IntegrationBlueprintApiClient:
                 return parsed
         return None
 
-    def _walk_payload_key_values(self, payload: Any):
+    def _walk_payload_key_values(self, payload: Any) -> Iterator[tuple[str, Any]]:
         """Yield (key, value) pairs recursively from nested payload structures."""
         if isinstance(payload, dict):
             for key, value in payload.items():
@@ -678,7 +677,7 @@ class IntegrationBlueprintApiClient:
     def _normalize_rate_candidate(self, value: float) -> float:
         """Normalize API rate values into cents/kWh when needed."""
         # Some APIs use dollars/kWh (e.g. 0.295); sensors expect cents/kWh.
-        if 0 < value < 2:
+        if 0 < value < self._RATE_DOLLARS_THRESHOLD:
             return round(value * 100, 6)
         return value
 

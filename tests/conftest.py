@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -10,9 +12,11 @@ from custom_components.flipped_energy.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
-async def auto_enable_custom_integrations(enable_custom_integrations):
+async def auto_enable_custom_integrations(
+    enable_custom_integrations: Any,
+) -> None:
     """Enable custom integrations in tests."""
-    yield
+    return
 
 
 @pytest.fixture

@@ -12,12 +12,12 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.flipped_energy.api import (
     IntegrationBlueprintApiClientAuthenticationError,
 )
-from custom_components.flipped_energy.const import DOMAIN
 from custom_components.flipped_energy.const import (
     CONF_ENABLE_INVOICES_PAGE,
     CONF_ENABLE_PLAN_PAGE,
     CONF_ENABLE_USAGE_PAGE,
     CONF_REFRESH_INTERVAL_MINUTES,
+    DOMAIN,
 )
 
 pytestmark = pytest.mark.asyncio

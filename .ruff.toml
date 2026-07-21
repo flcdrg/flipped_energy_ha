@@ -23,3 +23,17 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+"scripts/live_portal_scrape.py" = [
+    "T201", # print is expected for this CLI utility
+]
+"tests/**" = [
+    "ANN001", # fixture arguments are provided dynamically by pytest
+    "ANN201", # test/fixture return annotations are intentionally lightweight
+    "ARG001", # autouse fixtures may include intentionally unused dependencies
+    "PLR2004", # literals in tests improve readability
+    "S101", # asserts are standard in pytest tests
+    "S105", # test tokens/strings are non-production values
+    "SLF001", # testing private helpers is intentional for coordinator/client
+]

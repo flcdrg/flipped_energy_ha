@@ -122,6 +122,7 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Run the CLI entrypoint."""
     parser = _build_parser()
     args = parser.parse_args()
     return asyncio.run(_run(args))

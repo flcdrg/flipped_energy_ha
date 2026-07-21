@@ -9,12 +9,9 @@ import pytest
 from custom_components.flipped_energy.api import (
     IntegrationBlueprintApiClient,
     IntegrationBlueprintApiClientAuthenticationError,
-    IntegrationBlueprintApiClientExtractionError,
 )
 from custom_components.flipped_energy.const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
-    SNAPSHOT_BILLING_PERIOD_END,
-    SNAPSHOT_BILLING_PERIOD_START,
     SNAPSHOT_FEEDIN_RATE_CENTS,
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_PLAN_NAME,

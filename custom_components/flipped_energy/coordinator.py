@@ -42,14 +42,13 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             data = await self.config_entry.runtime_data.client.async_get_data()
             try:
                 await self._async_import_usage_statistics(data)
-            except Exception as exception:  # pylint: disable=broad-except
+            except (TypeError, ValueError, RuntimeError) as exception:
                 # Historical statistics import is best-effort and should not
                 # block setup or regular state updates.
                 self.logger.warning(
                     "Unable to import historical usage statistics: %s",
                     exception,
                 )
-            return data
         except IntegrationBlueprintApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
         except IntegrationBlueprintApiClientRateLimitError as exception:
@@ -59,6 +58,8 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             ) from exception
         except IntegrationBlueprintApiClientError as exception:
             raise UpdateFailed(exception) from exception
+        else:
+            return data
 
     async def _async_import_usage_statistics(self, data: Any) -> None:
         """Import fetched usage rows into recorder external statistics."""
@@ -126,15 +127,16 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> dt.datetime | None:
         """Return the latest imported timestamp for a statistic id."""
         try:
+            include_start_time = False
             result = await get_instance(self.hass).async_add_executor_job(
                 get_last_statistics,
                 self.hass,
                 1,
                 statistic_id,
-                False,
+                include_start_time,
                 {"state"},
             )
-        except Exception as exception:  # pylint: disable=broad-except
+        except (TypeError, ValueError, RuntimeError) as exception:
             self.logger.debug(
                 "Unable to read recorder statistics for %s: %s",
                 statistic_id,
@@ -191,7 +193,8 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
         return sorted(points_by_start.items(), key=lambda point: point[0])
 
     def _build_statistic_id(self, suffix: str) -> str:
-        """Build a recorder-compatible statistic_id.
+        """
+        Build a recorder-compatible statistic_id.
 
         Recorder expects `<domain>:<object_id>`, where object_id has similar
         constraints to entity object IDs.
