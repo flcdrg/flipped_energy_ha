@@ -10,6 +10,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 
+from .const import SNAPSHOT_AUTH_OK, SNAPSHOT_DATA_FRESH
 from .entity import IntegrationBlueprintEntity
 
 if TYPE_CHECKING:
@@ -21,9 +22,14 @@ if TYPE_CHECKING:
 
 ENTITY_DESCRIPTIONS = (
     BinarySensorEntityDescription(
-        key="flipped_energy",
-        name="Flipped Energy Binary Sensor",
+        key=SNAPSHOT_AUTH_OK,
+        name="Flipped Energy Authenticated",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+    ),
+    BinarySensorEntityDescription(
+        key=SNAPSHOT_DATA_FRESH,
+        name="Flipped Energy Data Fresh",
+        icon="mdi:database-check",
     ),
 )
 
@@ -52,10 +58,10 @@ class IntegrationBlueprintBinarySensor(IntegrationBlueprintEntity, BinarySensorE
         entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize the binary_sensor class."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, unique_id_suffix=entity_description.key)
         self.entity_description = entity_description
 
     @property
     def is_on(self) -> bool:
         """Return true if the binary_sensor is on."""
-        return self.coordinator.data.get("title", "") == "foo"
+        return bool(self.coordinator.data.get(self.entity_description.key, False))

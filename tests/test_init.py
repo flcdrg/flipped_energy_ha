@@ -18,22 +18,35 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
 
     with patch(
         "custom_components.flipped_energy.api.IntegrationBlueprintApiClient.async_get_data",
-        new=AsyncMock(return_value={"title": "foo", "body": "hello world"}),
+        new=AsyncMock(
+            return_value={
+                "plan_name": "Flipped Saver",
+                "amount_due_aud": 123.45,
+                "usage_today_kwh": 8.9,
+                "total_usage_kwh": 321.0,
+                "total_feedin_kwh": 41.5,
+                "import_rate_cents_kwh": 29.5,
+                "feedin_rate_cents_kwh": 8.0,
+                "auth_ok": True,
+                "data_fresh": True,
+                "last_successful_scrape": "2026-07-21T00:00:00+00:00",
+            }
+        ),
     ):
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.integration_sensor")
+    sensor_state = hass.states.get("sensor.flipped_energy_plan_name")
     assert sensor_state is not None
-    assert sensor_state.state == "hello world"
+    assert sensor_state.state == "Flipped Saver"
 
-    binary_sensor_state = hass.states.get("binary_sensor.flipped_energy_binary_sensor")
+    binary_sensor_state = hass.states.get("binary_sensor.flipped_energy_authenticated")
     assert binary_sensor_state is not None
     assert binary_sensor_state.state == "on"
 
-    switch_state = hass.states.get("switch.integration_switch")
-    assert switch_state is not None
-    assert switch_state.state == "on"
+    amount_due_state = hass.states.get("sensor.flipped_energy_amount_due")
+    assert amount_due_state is not None
+    assert amount_due_state.state == "123.45"
 
 
 async def test_unload_entry(hass, mock_config_entry) -> None:
@@ -42,7 +55,13 @@ async def test_unload_entry(hass, mock_config_entry) -> None:
 
     with patch(
         "custom_components.flipped_energy.api.IntegrationBlueprintApiClient.async_get_data",
-        new=AsyncMock(return_value={"title": "foo", "body": "hello world"}),
+        new=AsyncMock(
+            return_value={
+                "plan_name": "Flipped Saver",
+                "auth_ok": True,
+                "data_fresh": True,
+            }
+        ),
     ):
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
@@ -50,7 +69,7 @@ async def test_unload_entry(hass, mock_config_entry) -> None:
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.integration_sensor")
+    sensor_state = hass.states.get("sensor.flipped_energy_plan_name")
     assert sensor_state is None or sensor_state.state == "unavailable"
 
 
@@ -66,4 +85,4 @@ async def test_setup_entry_not_ready_on_api_error(hass, mock_config_entry) -> No
         await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
-    assert hass.states.get("sensor.integration_sensor") is None
+    assert hass.states.get("sensor.flipped_energy_plan_name") is None

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -14,6 +14,23 @@ if TYPE_CHECKING:
 
 
 type IntegrationBlueprintConfigEntry = ConfigEntry[IntegrationBlueprintData]
+
+
+class FlippedEnergySnapshot(TypedDict, total=False):
+    """Normalized account data scraped from the portal."""
+
+    plan_name: str
+    amount_due_aud: float
+    usage_today_kwh: float
+    total_usage_kwh: float
+    total_feedin_kwh: float
+    import_rate_cents_kwh: float
+    feedin_rate_cents_kwh: float
+    billing_period_start: str
+    billing_period_end: str
+    auth_ok: bool
+    data_fresh: bool
+    last_successful_scrape: str
 
 
 @dataclass

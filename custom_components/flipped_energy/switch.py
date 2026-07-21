@@ -48,7 +48,7 @@ class IntegrationBlueprintSwitch(IntegrationBlueprintEntity, SwitchEntity):
         entity_description: SwitchEntityDescription,
     ) -> None:
         """Initialize the switch class."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, unique_id_suffix=entity_description.key)
         self.entity_description = entity_description
 
     @property

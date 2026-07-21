@@ -15,7 +15,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import IntegrationBlueprintApiClient
-from .const import DOMAIN, LOGGER
+from .const import (
+    CONF_ENABLE_INVOICES_PAGE,
+    CONF_ENABLE_PLAN_PAGE,
+    CONF_ENABLE_USAGE_PAGE,
+    CONF_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_REFRESH_INTERVAL_MINUTES,
+    DOMAIN,
+    LOGGER,
+)
 from .coordinator import BlueprintDataUpdateCoordinator
 from .data import IntegrationBlueprintData
 
@@ -27,7 +35,6 @@ if TYPE_CHECKING:
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    Platform.SWITCH,
 ]
 
 
@@ -37,11 +44,27 @@ async def async_setup_entry(
     entry: IntegrationBlueprintConfigEntry,
 ) -> bool:
     """Set up this integration using UI."""
+    refresh_interval_minutes = int(
+        entry.options.get(
+            CONF_REFRESH_INTERVAL_MINUTES,
+            DEFAULT_REFRESH_INTERVAL_MINUTES,
+        )
+    )
+
+    enabled_pages = {
+        "plan": bool(entry.options.get(CONF_ENABLE_PLAN_PAGE, True)),
+        "usage": bool(entry.options.get(CONF_ENABLE_USAGE_PAGE, True)),
+        "invoices": bool(entry.options.get(CONF_ENABLE_INVOICES_PAGE, True)),
+    }
+
+    if not any(enabled_pages.values()):
+        enabled_pages["usage"] = True
+
     coordinator = BlueprintDataUpdateCoordinator(
         hass=hass,
         logger=LOGGER,
         name=DOMAIN,
-        update_interval=timedelta(hours=1),
+        update_interval=timedelta(minutes=refresh_interval_minutes),
         config_entry=entry,
     )
     entry.runtime_data = IntegrationBlueprintData(
@@ -49,6 +72,7 @@ async def async_setup_entry(
             username=entry.data[CONF_USERNAME],
             password=entry.data[CONF_PASSWORD],
             session=async_get_clientsession(hass),
+            enabled_pages=enabled_pages,
         ),
         integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,

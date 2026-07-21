@@ -17,5 +17,20 @@
         "abort": {
             "already_configured": "This entry is already configured."
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "refresh_interval_minutes": "Refresh interval (minutes)",
+                    "enable_plan_page": "Scrape plan page",
+                    "enable_usage_page": "Scrape usage page",
+                    "enable_invoices_page": "Scrape invoices page"
+                }
+            }
+        },
+        "error": {
+            "select_at_least_one_page": "Select at least one page to scrape."
+        }
     }
 }

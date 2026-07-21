@@ -16,7 +16,17 @@ from .api import (
     IntegrationBlueprintApiClientCommunicationError,
     IntegrationBlueprintApiClientError,
 )
-from .const import DOMAIN, LOGGER
+from .const import (
+    CONF_ENABLE_INVOICES_PAGE,
+    CONF_ENABLE_PLAN_PAGE,
+    CONF_ENABLE_USAGE_PAGE,
+    CONF_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_REFRESH_INTERVAL_MINUTES,
+    DOMAIN,
+    LOGGER,
+    MAX_REFRESH_INTERVAL_MINUTES,
+    MIN_REFRESH_INTERVAL_MINUTES,
+)
 
 
 class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -96,3 +106,96 @@ class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             session=async_get_clientsession(self.hass),
         )
         await client.async_get_data()
+
+    @staticmethod
+    @config_entries.callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Create the options flow."""
+        return BlueprintOptionsFlow(config_entry)
+
+
+class BlueprintOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for the integration."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self,
+        user_input: dict | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the integration options."""
+        if user_input is not None:
+            selected_pages = (
+                user_input.get(CONF_ENABLE_PLAN_PAGE, True),
+                user_input.get(CONF_ENABLE_USAGE_PAGE, True),
+                user_input.get(CONF_ENABLE_INVOICES_PAGE, True),
+            )
+            if not any(selected_pages):
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=self._build_schema(user_input),
+                    errors={"base": "select_at_least_one_page"},
+                )
+            return self.async_create_entry(title="", data=user_input)
+
+        defaults = {
+            CONF_REFRESH_INTERVAL_MINUTES: self._config_entry.options.get(
+                CONF_REFRESH_INTERVAL_MINUTES,
+                DEFAULT_REFRESH_INTERVAL_MINUTES,
+            ),
+            CONF_ENABLE_PLAN_PAGE: self._config_entry.options.get(
+                CONF_ENABLE_PLAN_PAGE,
+                True,
+            ),
+            CONF_ENABLE_USAGE_PAGE: self._config_entry.options.get(
+                CONF_ENABLE_USAGE_PAGE,
+                True,
+            ),
+            CONF_ENABLE_INVOICES_PAGE: self._config_entry.options.get(
+                CONF_ENABLE_INVOICES_PAGE,
+                True,
+            ),
+        }
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self._build_schema(defaults),
+            errors={},
+        )
+
+    def _build_schema(self, defaults: dict) -> vol.Schema:
+        """Build the options form schema."""
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_REFRESH_INTERVAL_MINUTES,
+                    default=defaults.get(
+                        CONF_REFRESH_INTERVAL_MINUTES,
+                        DEFAULT_REFRESH_INTERVAL_MINUTES,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_REFRESH_INTERVAL_MINUTES,
+                        max=MAX_REFRESH_INTERVAL_MINUTES,
+                        mode=selector.NumberSelectorMode.BOX,
+                        step=1,
+                    )
+                ),
+                vol.Required(
+                    CONF_ENABLE_PLAN_PAGE,
+                    default=defaults.get(CONF_ENABLE_PLAN_PAGE, True),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_ENABLE_USAGE_PAGE,
+                    default=defaults.get(CONF_ENABLE_USAGE_PAGE, True),
+                ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_ENABLE_INVOICES_PAGE,
+                    default=defaults.get(CONF_ENABLE_INVOICES_PAGE, True),
+                ): selector.BooleanSelector(),
+            }
+        )
