@@ -22,6 +22,8 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     plan_name: str
     amount_due_aud: float
     usage_today_kwh: float
+    usage_period_start: str
+    usage_period_end: str
     total_usage_kwh: float
     total_feedin_kwh: float
     import_rate_cents_kwh: float

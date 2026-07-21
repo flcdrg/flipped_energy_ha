@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
@@ -11,7 +12,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 
-from .entity import IntegrationBlueprintEntity
 from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_FEEDIN_RATE_CENTS,
@@ -20,8 +20,11 @@ from .const import (
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
+    SNAPSHOT_USAGE_PERIOD_END,
+    SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_TODAY_KWH,
 )
+from .entity import IntegrationBlueprintEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -45,10 +48,14 @@ ENTITY_DESCRIPTIONS = (
     ),
     SensorEntityDescription(
         key=SNAPSHOT_USAGE_TODAY_KWH,
-        name="Flipped Energy Usage Today",
-        device_class=SensorDeviceClass.ENERGY,
+        name="Flipped Energy Usage",
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_PERIOD_END,
+        name="Flipped Energy Usage Period End",
+        device_class=SensorDeviceClass.DATE,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_TOTAL_USAGE_KWH,
@@ -115,6 +122,32 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         self.entity_description = entity_description
 
     @property
-    def native_value(self) -> str | float | None:
+    def native_value(self) -> str | float | dt.date | dt.datetime | None:
         """Return the native value of the sensor."""
-        return self.coordinator.data.get(self.entity_description.key)
+        value = self.coordinator.data.get(self.entity_description.key)
+        if value is None:
+            return None
+
+        device_class = self.entity_description.device_class
+        if device_class == SensorDeviceClass.TIMESTAMP and isinstance(value, str):
+            normalized = value.replace("Z", "+00:00")
+            return dt.datetime.fromisoformat(normalized)
+        if device_class == SensorDeviceClass.DATE and isinstance(value, str):
+            return dt.date.fromisoformat(value[:10])
+
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Return the usage period metadata for the usage sensor."""
+        if self.entity_description.key != SNAPSHOT_USAGE_TODAY_KWH:
+            return None
+
+        attributes: dict[str, str] = {}
+        period_start = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_START)
+        period_end = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_END)
+        if period_start is not None:
+            attributes[SNAPSHOT_USAGE_PERIOD_START] = str(period_start)
+        if period_end is not None:
+            attributes[SNAPSHOT_USAGE_PERIOD_END] = str(period_end)
+        return attributes or None

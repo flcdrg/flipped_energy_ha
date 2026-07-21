@@ -23,6 +23,8 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
                 "plan_name": "Flipped Saver",
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
+                "usage_period_start": "2026-07-20T00:00:00",
+                "usage_period_end": "2026-07-20",
                 "total_usage_kwh": 321.0,
                 "total_feedin_kwh": 41.5,
                 "import_rate_cents_kwh": 29.5,
@@ -36,9 +38,19 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_plan_name")
+    sensor_state = hass.states.get("sensor.flipped_energy_usage")
     assert sensor_state is not None
-    assert sensor_state.state == "Flipped Saver"
+    assert sensor_state.state == "8.9"
+    assert sensor_state.attributes.get("usage_period_start") == "2026-07-20T00:00:00"
+    assert sensor_state.attributes.get("usage_period_end") == "2026-07-20"
+
+    usage_period_state = hass.states.get("sensor.flipped_energy_usage_period_end")
+    assert usage_period_state is not None
+    assert usage_period_state.state == "2026-07-20"
+
+    plan_state = hass.states.get("sensor.flipped_energy_plan_name")
+    assert plan_state is not None
+    assert plan_state.state == "Flipped Saver"
 
     binary_sensor_state = hass.states.get("binary_sensor.flipped_energy_authenticated")
     assert binary_sensor_state is not None
@@ -69,7 +81,7 @@ async def test_unload_entry(hass, mock_config_entry) -> None:
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_plan_name")
+    sensor_state = hass.states.get("sensor.flipped_energy_usage")
     assert sensor_state is None or sensor_state.state == "unavailable"
 
 

@@ -20,6 +20,8 @@ from custom_components.flipped_energy.const import (
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
+    SNAPSHOT_USAGE_PERIOD_END,
+    SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_TODAY_KWH,
 )
 
@@ -61,6 +63,8 @@ async def test_async_get_data_reauths_after_session_expiry() -> None:
                         SNAPSHOT_PLAN_NAME: "Flipped Saver",
                         SNAPSHOT_AMOUNT_DUE_AUD: 123.45,
                         SNAPSHOT_USAGE_TODAY_KWH: 8.9,
+                        SNAPSHOT_USAGE_PERIOD_START: "2026-07-20T00:00:00",
+                        SNAPSHOT_USAGE_PERIOD_END: "2026-07-20",
                         SNAPSHOT_TOTAL_USAGE_KWH: 321.0,
                         SNAPSHOT_TOTAL_FEEDIN_KWH: 41.5,
                         SNAPSHOT_IMPORT_RATE_CENTS: 29.5,
@@ -77,3 +81,37 @@ async def test_async_get_data_reauths_after_session_expiry() -> None:
     assert data["auth_ok"] is True
     assert data["data_fresh"] is True
     assert data["last_successful_scrape"]
+
+
+async def test_extract_hourly_usage_metrics_uses_latest_completed_day() -> None:
+    """Test hourly usage rows produce the latest historical usage period."""
+    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+
+    snapshot = client._extract_hourly_usage_metrics(
+        [
+            {
+                "time": "2026-07-19T23:00:00",
+                "value": 1.0,
+                "usageType": "Import",
+            },
+            {
+                "time": "2026-07-20T00:00:00",
+                "value": 2.0,
+                "usageType": "Import",
+            },
+            {
+                "time": "2026-07-20T01:00:00",
+                "value": 3.5,
+                "usageType": "Import",
+            },
+            {
+                "time": "2026-07-20T02:00:00",
+                "value": 0.5,
+                "usageType": "Export",
+            },
+        ]
+    )
+
+    assert snapshot[SNAPSHOT_USAGE_TODAY_KWH] == 5.5
+    assert snapshot[SNAPSHOT_USAGE_PERIOD_START] == "2026-07-20T00:00:00"
+    assert snapshot[SNAPSHOT_USAGE_PERIOD_END] == "2026-07-20"

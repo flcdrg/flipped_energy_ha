@@ -24,6 +24,8 @@ from .const import (
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_SCRAPE,
     SNAPSHOT_PLAN_NAME,
+    SNAPSHOT_USAGE_PERIOD_END,
+    SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_TODAY_KWH,
@@ -97,6 +99,7 @@ class IntegrationBlueprintApiClient:
     _API_BASE_URL = "https://api.flipped.energy"
     _API_LOGIN_PATH = "/user/login"
     _API_VALIDATE_PATH = "/api/Tracing/correlation"
+    _API_USAGE_HOURLY_PATH = "/Usage/usage/projectreads/hourly"
     _API_USAGE_DAILY_PATH = "/Usage/usage/projectreads/daily"
     _API_SNAPSHOT_PATHS = (
         "/MyAccount/GetAccountData",
@@ -288,16 +291,20 @@ class IntegrationBlueprintApiClient:
             if payload is not None:
                 payloads_by_path[path] = payload
 
-        # Daily usage is time-windowed in the web app; call explicitly with
-        # rolling windows to reliably obtain rows for recent usage periods.
+        # Hourly and daily usage are time-windowed in the web app; call them
+        # explicitly with rolling windows to reliably obtain recent history.
+        hourly_rows = await self._fetch_usage_rows(self._API_USAGE_HOURLY_PATH)
+        if hourly_rows:
+            payloads_by_path[self._API_USAGE_HOURLY_PATH] = hourly_rows
+
         usage_rows = await self._fetch_daily_usage_rows()
         if usage_rows:
             payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
 
         return payloads_by_path
 
-    async def _fetch_daily_usage_rows(self) -> list[dict[str, Any]]:
-        """Fetch project daily usage rows using rolling UTC date windows."""
+    async def _fetch_usage_rows(self, path: str) -> list[dict[str, Any]]:
+        """Fetch usage rows from a time-windowed usage endpoint."""
         now = dt.datetime.now(dt.UTC)
         windows = [
             (now - dt.timedelta(days=31), now),
@@ -313,7 +320,7 @@ class IntegrationBlueprintApiClient:
                     "end": self._format_api_datetime(end),
                 }
             )
-            path_with_query = f"{self._API_USAGE_DAILY_PATH}?{query}"
+            path_with_query = f"{path}?{query}"
             try:
                 payload = await self._fetch_api_json(path_with_query)
             except IntegrationBlueprintApiClientError:
@@ -328,6 +335,10 @@ class IntegrationBlueprintApiClient:
                 break
 
         return collected
+
+    async def _fetch_daily_usage_rows(self) -> list[dict[str, Any]]:
+        """Fetch project daily usage rows using rolling UTC date windows."""
+        return await self._fetch_usage_rows(self._API_USAGE_DAILY_PATH)
 
     def _format_api_datetime(self, value: dt.datetime) -> str:
         """Format UTC datetimes like the portal API query parameters."""
@@ -369,6 +380,10 @@ class IntegrationBlueprintApiClient:
         usage_rows = payloads_by_path.get(self._API_USAGE_DAILY_PATH)
         usage_metrics = self._extract_usage_metrics(usage_rows)
         snapshot.update(usage_metrics)
+
+        hourly_rows = payloads_by_path.get(self._API_USAGE_HOURLY_PATH)
+        hourly_metrics = self._extract_hourly_usage_metrics(hourly_rows)
+        snapshot.update(hourly_metrics)
 
         return snapshot
 
@@ -524,6 +539,56 @@ class IntegrationBlueprintApiClient:
         usage_today = sum(v for d, v in imports if d == latest_date)
         metrics[SNAPSHOT_USAGE_TODAY_KWH] = round(usage_today, 6)
         return metrics
+
+    def _extract_hourly_usage_metrics(self, usage_rows: Any) -> dict[str, Any]:
+        """Extract the latest completed usage period from hourly rows."""
+        if not isinstance(usage_rows, list):
+            return {}
+
+        hourly_imports: list[tuple[dt.datetime, float]] = []
+        for row in usage_rows:
+            if not isinstance(row, dict):
+                continue
+            stamp = self._coerce_text(row.get("time"))
+            usage_type = (self._coerce_text(row.get("usageType")) or "").lower()
+            value = self._coerce_float(row.get("value"))
+            if not stamp or value is None:
+                continue
+            parsed_stamp = self._parse_iso_datetime(stamp)
+            if parsed_stamp is None:
+                continue
+            if usage_type == "import":
+                hourly_imports.append((parsed_stamp, value))
+
+        if not hourly_imports:
+            return {}
+
+        latest_date = max(stamp.date() for stamp, _ in hourly_imports)
+        latest_period_rows = [
+            (stamp, value)
+            for stamp, value in hourly_imports
+            if stamp.date() == latest_date
+        ]
+        if not latest_period_rows:
+            return {}
+
+        period_start = min(stamp for stamp, _ in latest_period_rows)
+
+        return {
+            SNAPSHOT_USAGE_TODAY_KWH: round(
+                sum(value for _, value in latest_period_rows),
+                6,
+            ),
+            SNAPSHOT_USAGE_PERIOD_START: period_start.isoformat(),
+            SNAPSHOT_USAGE_PERIOD_END: latest_date.isoformat(),
+        }
+
+    def _parse_iso_datetime(self, value: str) -> dt.datetime | None:
+        """Parse a timestamp/date string into a datetime value."""
+        normalized = value.replace("Z", "+00:00")
+        with suppress(ValueError):
+            return dt.datetime.fromisoformat(normalized)
+        return None
 
     def _parse_iso_date(self, value: str) -> dt.date | None:
         """Parse a timestamp/date into a date value."""

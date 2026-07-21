@@ -1,12 +1,12 @@
-# GET /Usage/usage/projectreads/daily
+# GET /Usage/usage/projectreads/hourly
 
 Purpose:
 
-- Returns daily usage rows, including import/export values.
+- Returns hourly usage rows used to surface the integration's historical usage sensor.
 
 URL:
 
-- <https://api.flipped.energy/Usage/usage/projectreads/daily>
+- <https://api.flipped.energy/Usage/usage/projectreads/hourly>
 
 Auth:
 
@@ -34,10 +34,9 @@ Observed status:
 
 Integration mapping:
 
-- Supporting source for total usage and feed-in rollups.
-- total_usage_kwh from all Import row values in window
-- total_feedin_kwh from all Export row values in window
-- billing_period_start and billing_period_end from min/max row dates
+- usage_today_kwh from Import rows for the latest completed day in the hourly window
+- usage_period_start from the earliest hourly import timestamp in that day
+- usage_period_end from the latest completed day date
 
 Notes:
 

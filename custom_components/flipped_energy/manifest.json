@@ -9,5 +9,5 @@
   "documentation": "https://github.com/flcdrg/flipped_energy_ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/flcdrg/flipped_energy_ha/issues",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
