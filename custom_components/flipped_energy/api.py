@@ -24,6 +24,8 @@ from .const import (
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_SCRAPE,
     SNAPSHOT_PLAN_NAME,
+    SNAPSHOT_USAGE_DAILY_ROWS,
+    SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
@@ -380,10 +382,14 @@ class IntegrationBlueprintApiClient:
         usage_rows = payloads_by_path.get(self._API_USAGE_DAILY_PATH)
         usage_metrics = self._extract_usage_metrics(usage_rows)
         snapshot.update(usage_metrics)
+        if isinstance(usage_rows, list):
+            snapshot[SNAPSHOT_USAGE_DAILY_ROWS] = usage_rows
 
         hourly_rows = payloads_by_path.get(self._API_USAGE_HOURLY_PATH)
         hourly_metrics = self._extract_hourly_usage_metrics(hourly_rows)
         snapshot.update(hourly_metrics)
+        if isinstance(hourly_rows, list):
+            snapshot[SNAPSHOT_USAGE_HOURLY_ROWS] = hourly_rows
 
         return snapshot
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -33,6 +33,8 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     auth_ok: bool
     data_fresh: bool
     last_successful_scrape: str
+    _usage_hourly_rows: list[dict[str, Any]]
+    _usage_daily_rows: list[dict[str, Any]]
 
 
 @dataclass

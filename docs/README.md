@@ -75,3 +75,54 @@ The Home Assistant integration currently derives values from:
 - Usage period metadata: Usage projectreads hourly
 - Total usage, total feed-in: Usage projectreads daily
 - Billing period start/end: usage date range or next bill fields
+
+## Historical Statistics in Home Assistant
+
+The integration imports historical usage into Home Assistant recorder as external statistics.
+
+Statistic ID pattern:
+
+- `flipped_energy:<entry_id>:usage_hourly_import_kwh`
+- `flipped_energy:<entry_id>:usage_daily_import_kwh`
+
+Notes:
+
+- `<entry_id>` is your config entry ID, so IDs are unique per integration instance.
+- Imports are incremental: on each refresh, only points newer than the latest stored timestamp are added.
+
+Where to verify data:
+
+- Restart Home Assistant and allow at least one successful integration refresh.
+- Open Developer Tools and inspect statistics for the IDs above.
+
+How to chart it:
+
+- Add a `statistics-graph` card and reference the statistic IDs.
+
+Example (hourly):
+
+```yaml
+type: statistics-graph
+title: Flipped Hourly Import Usage
+days_to_show: 14
+entities:
+  - flipped_energy:YOUR_ENTRY_ID:usage_hourly_import_kwh
+stat_types:
+  - state
+chart_type: line
+period: hour
+```
+
+Example (daily):
+
+```yaml
+type: statistics-graph
+title: Flipped Daily Import Usage
+days_to_show: 90
+entities:
+  - flipped_energy:YOUR_ENTRY_ID:usage_daily_import_kwh
+stat_types:
+  - state
+chart_type: bar
+period: day
+```
