@@ -1,6 +1,6 @@
 # Flipped Energy Integration for Home Assistant
 
-Custom Home Assistant integration for Flipped Energy account data.
+Custom Home Assistant integration for [Flipped Energy](https://flipped.energy/) account data.
 
 This integration authenticates against the Flipped API and exposes plan, billing, and usage information as Home Assistant entities. It also imports historical usage as Recorder external statistics so you can chart it directly.
 
