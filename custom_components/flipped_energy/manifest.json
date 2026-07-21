@@ -5,9 +5,7 @@
     "@flcdrg"
   ],
   "config_flow": true,
-  "requirements": [
-    "beautifulsoup4==4.12.3"
-  ],
+  "requirements": [],
   "documentation": "https://github.com/flcdrg/flipped_energy_ha",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/flcdrg/flipped_energy_ha/issues",
