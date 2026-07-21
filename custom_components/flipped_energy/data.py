@@ -17,7 +17,7 @@ type IntegrationBlueprintConfigEntry = ConfigEntry[IntegrationBlueprintData]
 
 
 class FlippedEnergySnapshot(TypedDict, total=False):
-    """Normalized account data scraped from the portal."""
+    """Normalized account data fetched from the Flipped API."""
 
     plan_name: str
     amount_due_aud: float
@@ -32,7 +32,7 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     billing_period_end: str
     auth_ok: bool
     data_fresh: bool
-    last_successful_scrape: str
+    last_successful_update: str
     _usage_hourly_rows: list[dict[str, Any]]
     _usage_daily_rows: list[dict[str, Any]]
 

@@ -1,34 +1,135 @@
-# Flipped Energy integration for Home Assistant
+# Flipped Energy Integration for Home Assistant
 
-## What?
+Custom Home Assistant integration for Flipped Energy account data.
 
-This repository contains multiple files, here is a overview:
+This integration authenticates against the Flipped API and exposes plan, billing, and usage information as Home Assistant entities. It also imports historical usage as Recorder external statistics so you can chart it directly.
 
-File | Purpose | Documentation
--- | -- | --
-`.devcontainer.json` | Used for development/testing with Visual Studio Code. | [Documentation](https://code.visualstudio.com/docs/remote/containers)
-`.github/renovate.json` | Dependency update configuration for Renovate (enabled by default). | [Documentation](https://docs.renovatebot.com/configuration-options/)
-`.github/_dependabot.yml` | Dependency update configuration for Dependabot (disabled, see "Dependency updates" below). | [Documentation](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file)
-`.github/ISSUE_TEMPLATE/*.yml` | Templates for the issue tracker | [Documentation](https://help.github.com/en/github/building-a-strong-community/configuring-issue-templates-for-your-repository)
-`custom_components/flipped_energy/*` | Integration files, this is where everything happens. | [Documentation](https://developers.home-assistant.io/docs/creating_component_index)
-`CONTRIBUTING.md` | Guidelines on how to contribute. | [Documentation](https://help.github.com/en/github/building-a-strong-community/setting-guidelines-for-repository-contributors)
-`LICENSE` | The license file for the project. | [Documentation](https://help.github.com/en/github/creating-cloning-and-archiving-repositories/licensing-a-repository)
-`README.md` | The file you are reading now, should contain info about the integration, installation and configuration instructions. | [Documentation](https://help.github.com/en/github/writing-on-github/basic-writing-and-formatting-syntax)
-`requirements_dev.txt` | Python packages used for development/testing this integration (also installs lint tooling via `requirements_lint.txt`). | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
-`requirements_lint.txt` | Python packages used to lint this integration (installed by the Lint CI job). | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
-`requirements_common.txt` | Python packages common to CI and local dev, installed first so any pip upgrade completes before other dependencies (e.g. a modern pip). | [Documentation](https://pip.pypa.io/en/stable/user_guide/#requirements-files)
+## Features
 
-## How?
+- API-only integration (no portal page parsing).
+- Config flow setup with username and password.
+- Sensors for:
+  - plan name
+  - amount due
+  - usage
+  - usage period end (date companion sensor)
+  - total usage and total feed-in
+  - import and feed-in rates
+  - last successful update timestamp
+- Binary sensors for:
+  - authenticated status
+  - data freshness
+- Historical usage import into Home Assistant Recorder statistics (hourly and daily import usage series).
 
+## Installation
 
-1. Run the `scripts/develop` to start HA and test out your new integration.
+Preferred: install with HACS
 
-## Next steps
+1. Open HACS in Home Assistant.
+2. Go to `Integrations`.
+3. Open the menu (three dots) and select `Custom repositories`.
+4. Add `https://github.com/flcdrg/flipped_energy_ha` with category `Integration`.
+5. Search for `Flipped Energy` in HACS and install it.
+6. Restart Home Assistant.
+7. Go to `Settings` -> `Devices & Services` -> `Add Integration`.
+8. Search for `Flipped Energy`.
+9. Enter your Flipped credentials.
 
-These are some next steps you may want to look into:
-- Run `./scripts/test` to execute the included integration tests, and extend coverage using [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component).
-- Run `./scripts/live_portal_scrape.py --username you@example.com` to do a real-site scrape smoke test and print the normalized snapshot JSON (password will be prompted securely). Add `--include-plan`, `--include-usage`, and/or `--include-invoices` to target specific pages.
-- Add brand images (logo/icon).
-- Create your first release.
-- Share your integration on the [Home Assistant Forum](https://community.home-assistant.io/).
-- Submit your integration to [HACS](https://hacs.xyz/docs/publish/start).
+Manual installation (fallback):
+
+1. Copy `custom_components/flipped_energy` into your Home Assistant config under `custom_components`.
+2. Restart Home Assistant.
+3. Go to `Settings` -> `Devices & Services` -> `Add Integration`.
+4. Search for `Flipped Energy`.
+5. Enter your Flipped credentials.
+
+For local development in this repository:
+
+1. Run `scripts/setup`.
+2. Run `scripts/develop`.
+3. Open Home Assistant and add the integration via UI.
+
+## Configuration Options
+
+Available options in the integration options flow:
+
+- refresh interval
+- enable/disable plan data
+- enable/disable usage data
+- enable/disable invoice data
+
+## Historical Statistics in Home Assistant
+
+The integration imports historical usage into Home Assistant Recorder as external statistics.
+
+Statistic ID pattern:
+
+- `flipped_energy:<sanitized_entry_id>_usage_hourly_import_kwh`
+- `flipped_energy:<sanitized_entry_id>_usage_daily_import_kwh`
+
+Notes:
+
+This project is an independent, community-built Home Assistant integration.
+
+It is not affiliated with, endorsed by, or supported by Flipped Energy.
+
+Flipped Energy does not provide support for this integration.
+
+- `<sanitized_entry_id>` is based on your config entry ID and is unique per integration instance.
+- Imports are incremental: each refresh only writes points newer than the latest stored timestamp.
+
+Where to verify data:
+
+1. Restart Home Assistant and allow at least one successful integration refresh.
+2. Open Developer Tools and inspect statistics using the IDs above.
+
+Example card (hourly):
+
+```yaml
+type: statistics-graph
+entities:
+	- "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_hourly_import_kwh"
+title: Flipped Hourly Import Usage
+days_to_show: 2
+period: hour
+chart_type: bar
+stat_types:
+	- mean
+```
+
+Example card (daily):
+
+```yaml
+type: statistics-graph
+entities:
+	- "flipped_energy:YOUR_SANITIZED_ENTRY_ID_usage_daily_import_kwh"
+title: Flipped Daily Import Usage
+days_to_show: 30
+period: day
+chart_type: bar
+stat_types:
+	- mean
+```
+
+## Troubleshooting
+
+- If Home Assistant UI loads in private window but not normal window, clear site data and service worker for that HA origin.
+- If a stats graph card is blank:
+  - ensure the `statistic_id` exactly matches Recorder metadata
+  - quote IDs in YAML (because of `:`)
+  - start with a minimal card and then add display options
+
+## Development
+
+Useful commands:
+
+- `scripts/setup` to install dependencies
+- `scripts/develop` to run Home Assistant
+- `scripts/test` to run tests
+- `scripts/lint` to run lint checks
+
+Useful references:
+
+- Integration implementation: `custom_components/flipped_energy`
+- API documentation in this repo: `docs/README.md`
+- Contribution guide: `CONTRIBUTING.md`

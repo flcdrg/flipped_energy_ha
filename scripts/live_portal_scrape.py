@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a real-site Flipped Energy scrape and print the normalized snapshot."""
+"""Run a real-site Flipped Energy API fetch and print the normalized snapshot."""
 
 from __future__ import annotations
 
@@ -47,19 +47,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-plan",
         action="store_true",
         default=False,
-        help="Include scraping of the plan page",
+        help="Include plan data fetch",
     )
     parser.add_argument(
         "--include-usage",
         action="store_true",
         default=False,
-        help="Include scraping of the usage page",
+        help="Include usage data fetch",
     )
     parser.add_argument(
         "--include-invoices",
         action="store_true",
         default=False,
-        help="Include scraping of the invoices page",
+        help="Include invoice data fetch",
     )
     parser.add_argument(
         "--timeout",
@@ -108,7 +108,7 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"Rate limited: {err}.{retry_after}", file=sys.stderr)
             return 3
         except IntegrationBlueprintApiClientExtractionError as err:
-            print(f"Extraction failed: {err}", file=sys.stderr)
+            print(f"API data extraction failed: {err}", file=sys.stderr)
             return 4
         except IntegrationBlueprintApiClientCommunicationError as err:
             print(f"Network/communication error: {err}", file=sys.stderr)

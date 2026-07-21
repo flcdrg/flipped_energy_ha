@@ -1,4 +1,4 @@
-"""Flipped Energy authenticated portal scraping client."""
+"""Flipped Energy authenticated API client."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from .const import (
     SNAPSHOT_DATA_FRESH,
     SNAPSHOT_FEEDIN_RATE_CENTS,
     SNAPSHOT_IMPORT_RATE_CENTS,
-    SNAPSHOT_LAST_SUCCESSFUL_SCRAPE,
+    SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_USAGE_DAILY_ROWS,
     SNAPSHOT_USAGE_HOURLY_ROWS,
@@ -96,7 +96,7 @@ def _verify_response_or_raise(response: aiohttp.ClientResponse) -> None:
 
 
 class IntegrationBlueprintApiClient:
-    """Flipped Energy authenticated scraping client."""
+    """Flipped Energy authenticated API client."""
 
     _API_BASE_URL = "https://api.flipped.energy"
     _API_LOGIN_PATH = "/user/login"
@@ -119,7 +119,7 @@ class IntegrationBlueprintApiClient:
         session: aiohttp.ClientSession,
         enabled_pages: dict[str, bool] | None = None,
     ) -> None:
-        """Initialize the scraping client."""
+        """Initialize the API client."""
         self._username = username
         self._password = password
         self._session = session
@@ -154,7 +154,7 @@ class IntegrationBlueprintApiClient:
 
         snapshot[SNAPSHOT_AUTH_OK] = True
         snapshot[SNAPSHOT_DATA_FRESH] = True
-        snapshot[SNAPSHOT_LAST_SUCCESSFUL_SCRAPE] = dt.datetime.now(
+        snapshot[SNAPSHOT_LAST_SUCCESSFUL_UPDATE] = dt.datetime.now(
             tz=dt.UTC
         ).isoformat()
         return snapshot

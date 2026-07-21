@@ -1,4 +1,4 @@
-"""Tests for flipped_energy API scraping client."""
+"""Tests for flipped_energy API client."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ async def test_async_get_data_reauths_after_session_expiry() -> None:
     assert data[SNAPSHOT_PLAN_NAME] == "Flipped Saver"
     assert data["auth_ok"] is True
     assert data["data_fresh"] is True
-    assert data["last_successful_scrape"]
+    assert data["last_successful_update"]
 
 
 async def test_extract_hourly_usage_metrics_uses_latest_completed_day() -> None:

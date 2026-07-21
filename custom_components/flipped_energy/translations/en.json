@@ -23,14 +23,14 @@
             "init": {
                 "data": {
                     "refresh_interval_minutes": "Refresh interval (minutes)",
-                    "enable_plan_page": "Scrape plan page",
-                    "enable_usage_page": "Scrape usage page",
-                    "enable_invoices_page": "Scrape invoices page"
+                    "enable_plan_page": "Include plan data",
+                    "enable_usage_page": "Include usage data",
+                    "enable_invoices_page": "Include invoice data"
                 }
             }
         },
         "error": {
-            "select_at_least_one_page": "Select at least one page to scrape."
+            "select_at_least_one_page": "Select at least one data set to include."
         }
     }
 }

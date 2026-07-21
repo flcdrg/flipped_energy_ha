@@ -31,7 +31,7 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
                 "feedin_rate_cents_kwh": 8.0,
                 "auth_ok": True,
                 "data_fresh": True,
-                "last_successful_scrape": "2026-07-21T00:00:00+00:00",
+                "last_successful_update": "2026-07-21T00:00:00+00:00",
             }
         ),
     ):

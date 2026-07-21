@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models.statistics import StatisticMeanType
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
@@ -37,7 +40,15 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
         """Update data via library."""
         try:
             data = await self.config_entry.runtime_data.client.async_get_data()
-            await self._async_import_usage_statistics(data)
+            try:
+                await self._async_import_usage_statistics(data)
+            except Exception as exception:  # pylint: disable=broad-except
+                # Historical statistics import is best-effort and should not
+                # block setup or regular state updates.
+                self.logger.warning(
+                    "Unable to import historical usage statistics: %s",
+                    exception,
+                )
             return data
         except IntegrationBlueprintApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
@@ -79,7 +90,7 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
         if not points:
             return
 
-        statistic_id = f"{DOMAIN}:{self.config_entry.entry_id}:{statistic_suffix}"
+        statistic_id = self._build_statistic_id(statistic_suffix)
         last_start = await self._async_get_last_stat_start(statistic_id)
         if last_start is not None:
             points = [point for point in points if point[0] > last_start]
@@ -87,17 +98,23 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             return
 
         metadata = {
-            "has_mean": False,
+            "has_mean": True,
             "has_sum": False,
+            "mean_type": StatisticMeanType.ARITHMETIC,
             "name": name,
             "source": DOMAIN,
             "statistic_id": statistic_id,
+            "unit_class": "energy",
             "unit_of_measurement": "kWh",
         }
         statistics = [
             {
                 "start": start,
                 "state": value,
+                "min": value,
+                "max": value,
+                "mean": value,
+                "mean_weight": 1.0,
             }
             for start, value in points
         ]
@@ -109,7 +126,7 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> dt.datetime | None:
         """Return the latest imported timestamp for a statistic id."""
         try:
-            result = await self.hass.async_add_executor_job(
+            result = await get_instance(self.hass).async_add_executor_job(
                 get_last_statistics,
                 self.hass,
                 1,
@@ -172,3 +189,15 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             points_by_start[parsed] = float(value_raw)
 
         return sorted(points_by_start.items(), key=lambda point: point[0])
+
+    def _build_statistic_id(self, suffix: str) -> str:
+        """Build a recorder-compatible statistic_id.
+
+        Recorder expects `<domain>:<object_id>`, where object_id has similar
+        constraints to entity object IDs.
+        """
+        raw_object_id = f"{self.config_entry.entry_id}_{suffix}".lower()
+        sanitized_object_id = re.sub(r"[^a-z0-9_]", "_", raw_object_id).strip("_")
+        if not sanitized_object_id:
+            sanitized_object_id = suffix
+        return f"{DOMAIN}:{sanitized_object_id}"
