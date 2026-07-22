@@ -14,7 +14,8 @@ This integration authenticates against the Flipped API and exposes plan, billing
   - usage
   - usage period end (date companion sensor)
   - total usage and total feed-in
-  - import and feed-in rates
+  - import and feed-in rates (with time-of-day rate window attributes when available)
+  - daily supply charge (dynamically includes GST when enabled)
   - last successful update timestamp
 - Binary sensors for:
   - authenticated status
@@ -54,9 +55,26 @@ For local development in this repository:
 Available options in the integration options flow:
 
 - refresh interval
+- include GST in tariff and supply values
 - enable/disable plan data
 - enable/disable usage data
 - enable/disable invoice data
+
+## Dashboard Cards (TOU)
+
+Time-of-use data is exposed by these entities:
+
+- `sensor.flipped_energy_import_tou_schedule`
+- `sensor.flipped_energy_feed_in_tou_schedule`
+- `sensor.flipped_energy_import_tou_blocks`
+- `sensor.flipped_energy_feed_in_tou_blocks`
+
+Ready-to-paste dashboard templates are provided in `docs/dashboard-cards.yaml`.
+
+Important markdown rendering note:
+
+- If you are editing a card in raw YAML mode, paste the full card block (`type`, `title`, and `content`).
+- If you are editing a Markdown card's Content field in the visual editor, paste only the Jinja template body (do not include `type`, `title`, or `content`).
 
 ## Historical Statistics in Home Assistant
 

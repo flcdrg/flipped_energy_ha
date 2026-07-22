@@ -65,6 +65,7 @@ Supporting endpoints seen in HAR:
 ## Data Mapping
 
 - Entity-level mappings and field transforms are documented in [Data Mapping](data-mapping.md).
+- Dashboard card templates are available in [Dashboard Cards](dashboard-cards.yaml).
 
 ## Current Integration Mapping
 

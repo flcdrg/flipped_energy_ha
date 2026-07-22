@@ -23,6 +23,7 @@ This document traces each exposed Home Assistant entity field to the API payload
 | total_feedin_kwh       | Flipped Energy Total Feed-In          | /Usage/usage/projectreads/daily  | rows where usageType=Export                                                                             | Sum abs(value) across Export rows; round to 6 decimals.                                                                                                    |
 | import_rate_cents_kwh  | Flipped Energy Import Rate            | /MyAccount/ProjectAccountData    | accounts[0].product.currentPlan.billingUnits[].chargePerKwh                                             | Exclude feed-in and non-positive units. Convert to c/kWh (x100). Use duration-weighted average when time-of-day windows are present, else arithmetic mean. |
 | feedin_rate_cents_kwh  | Flipped Energy Feed-In Rate           | /MyAccount/ProjectAccountData    | accounts[0].product.currentPlan.billingUnits[] where billingUnitType=FeedInTariff or name contains feed | Convert chargePerKwh to c/kWh via abs(x100). Use minimum observed feed-in value.                                                                           |
+| supply_charge_daily_cents | Flipped Energy Supply Charge Daily | /MyAccount/ProjectAccountData    | accounts[0].product.currentPlan.billingUnits[].periodicCharge on supply charge units                    | Convert dollars to cents when needed. Sensor output is dynamic: uses ex-GST or incl-GST based on the Include GST option.                                    |
 | last_successful_update | Flipped Energy Last Successful Update | Integration runtime              | Not from payload                                                                                        | Set to current UTC timestamp after successful snapshot build.                                                                                              |
 
 ## Additional Snapshot Keys (Internal)
@@ -33,6 +34,9 @@ These keys are populated in coordinator data but are not currently exposed as st
 | -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | billing_period_start | Start date of billing/usage window | Prefer min usage row date from /Usage/usage/projectreads/daily. Fallback to nextBillIssueDate (YYYY-MM-DD) from /MyAccount/ProjectAccountData. |
 | billing_period_end   | End date of billing/usage window   | Prefer max usage row date from /Usage/usage/projectreads/daily. Fallback to nextBillDueDate (YYYY-MM-DD) from /MyAccount/ProjectAccountData.   |
+| import_rate_blocks   | Time-of-day import rate windows    | From usage billing units with timeOfDayStartMinutes/timeOfDayEndMinutes. Exposed as attributes on Flipped Energy Import Rate.                    |
+| feedin_rate_blocks   | Time-of-day feed-in tariff windows | From feed-in billing units with timeOfDayStartMinutes/timeOfDayEndMinutes. Exposed as attributes on Flipped Energy Feed-In Rate.                 |
+| supply_charge_daily_incl_gst_cents | Internal incl-GST supply value | Derived from supply billing units when available. Used as dynamic input when Include GST option is enabled.                                          |
 
 ## Binary Sensor Mapping
 

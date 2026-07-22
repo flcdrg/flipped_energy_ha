@@ -28,6 +28,12 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     total_feedin_kwh: float
     import_rate_cents_kwh: float
     feedin_rate_cents_kwh: float
+    import_rate_blocks: list[dict[str, Any]]
+    feedin_rate_blocks: list[dict[str, Any]]
+    import_tou_schedule: str
+    feedin_tou_schedule: str
+    supply_charge_daily_cents: float
+    supply_charge_daily_incl_gst_cents: float
     billing_period_start: str
     billing_period_end: str
     auth_ok: bool
@@ -44,3 +50,6 @@ class IntegrationBlueprintData:
     client: IntegrationBlueprintApiClient
     coordinator: BlueprintDataUpdateCoordinator
     integration: Integration
+    include_gst: bool
+    refresh_interval_minutes: int
+    enabled_pages: dict[str, bool]
