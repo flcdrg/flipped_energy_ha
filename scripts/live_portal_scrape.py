@@ -7,13 +7,20 @@ import argparse
 import asyncio
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
-import aiohttp
+# Re-exec with the project virtualenv interpreter when available so imports
+# resolve even if system python lacks the integration dependencies.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
+if VENV_PYTHON.exists() and Path(sys.executable) != VENV_PYTHON:
+    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), *sys.argv])  # noqa: S606
+
+import aiohttp  # noqa: E402
 
 # Ensure local integration package is importable when executed from scripts/.
-REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

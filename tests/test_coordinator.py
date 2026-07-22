@@ -33,19 +33,19 @@ async def test_async_update_data_imports_usage_statistics(
             {
                 "time": "2026-07-20T00:00:00",
                 "value": 1.1,
-                "usageType": "Import",
+                "usageType": "Export",
             },
             {
                 "time": "2026-07-20T01:00:00",
                 "value": 1.3,
-                "usageType": "Import",
+                "usageType": "Export",
             },
         ],
         SNAPSHOT_USAGE_DAILY_ROWS: [
             {
                 "time": "2026-07-20T00:00:00",
                 "value": 8.0,
-                "usageType": "Import",
+                "usageType": "Export",
             }
         ],
     }
@@ -105,12 +105,12 @@ async def test_async_update_data_skips_duplicate_usage_statistics(
             {
                 "time": "2026-07-20T00:00:00",
                 "value": 1.1,
-                "usageType": "Import",
+                "usageType": "Export",
             },
             {
                 "time": "2026-07-20T01:00:00",
                 "value": 1.3,
-                "usageType": "Import",
+                "usageType": "Export",
             },
         ],
     }

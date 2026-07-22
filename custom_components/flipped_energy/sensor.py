@@ -31,6 +31,7 @@ from .const import (
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
+    SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_TODAY_KWH,
@@ -59,7 +60,13 @@ ENTITY_DESCRIPTIONS = (
     ),
     SensorEntityDescription(
         key=SNAPSHOT_USAGE_TODAY_KWH,
-        name="Flipped Energy Usage",
+        name="Flipped Energy Usage Yesterday",
+        native_unit_of_measurement="kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
+        name="Flipped Energy Feedin Yesterday",
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),

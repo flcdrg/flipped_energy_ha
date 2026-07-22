@@ -206,14 +206,15 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
         self,
         rows: list[dict[str, Any]],
     ) -> list[tuple[dt.datetime, float]]:
-        """Return sorted UTC timestamp/value points for import rows."""
+        """Return sorted UTC timestamp/value points for customer import usage."""
         points_by_start: dict[dt.datetime, float] = {}
         for row in rows:
             if not isinstance(row, dict):
                 continue
 
             usage_type = row.get("usageType")
-            if not isinstance(usage_type, str) or usage_type.lower() != "import":
+            # Flipped usageType is retailer-perspective; API Export is customer import.
+            if not isinstance(usage_type, str) or usage_type.lower() != "export":
                 continue
 
             stamp = row.get("time")
@@ -235,7 +236,7 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
             if isinstance(value_raw, bool) or not isinstance(value_raw, (int, float)):
                 continue
 
-            points_by_start[parsed] = float(value_raw)
+            points_by_start[parsed] = abs(float(value_raw))
 
         return sorted(points_by_start.items(), key=lambda point: point[0])
 

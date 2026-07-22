@@ -34,6 +34,7 @@ from .const import (
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_DAILY_ROWS,
+    SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
     SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
@@ -760,8 +761,8 @@ class IntegrationBlueprintApiClient:
         if not isinstance(usage_rows, list):
             return {}
 
-        imports: list[tuple[dt.date, float]] = []
-        exports: list[tuple[dt.date, float]] = []
+        customer_import_usage_rows: list[tuple[dt.date, float]] = []
+        customer_feedin_rows: list[tuple[dt.date, float]] = []
         all_dates: list[dt.date] = []
 
         for row in usage_rows:
@@ -777,28 +778,39 @@ class IntegrationBlueprintApiClient:
                 continue
 
             all_dates.append(parsed_date)
-            if usage_type == "import":
-                imports.append((parsed_date, value))
-            elif usage_type == "export":
-                exports.append((parsed_date, abs(value)))
+            # Flipped usageType values are observed in retailer perspective:
+            # - API Export corresponds to customer grid import (consumption)
+            # - API Import corresponds to customer feed-in export
+            if usage_type == "export":
+                customer_import_usage_rows.append((parsed_date, abs(value)))
+            elif usage_type == "import":
+                customer_feedin_rows.append((parsed_date, abs(value)))
 
         if not all_dates:
             return {}
 
         metrics: dict[str, Any] = {
-            SNAPSHOT_TOTAL_USAGE_KWH: round(sum(v for _, v in imports), 6)
-            if imports
+            SNAPSHOT_TOTAL_USAGE_KWH: round(
+                sum(v for _, v in customer_import_usage_rows),
+                6,
+            )
+            if customer_import_usage_rows
             else 0.0,
-            SNAPSHOT_TOTAL_FEEDIN_KWH: round(sum(v for _, v in exports), 6)
-            if exports
+            SNAPSHOT_TOTAL_FEEDIN_KWH: round(sum(v for _, v in customer_feedin_rows), 6)
+            if customer_feedin_rows
             else 0.0,
             SNAPSHOT_BILLING_PERIOD_START: min(all_dates).isoformat(),
             SNAPSHOT_BILLING_PERIOD_END: max(all_dates).isoformat(),
         }
 
-        latest_date = max((d for d, _ in imports), default=max(all_dates))
-        usage_today = sum(v for d, v in imports if d == latest_date)
+        latest_date = max(
+            (d for d, _ in customer_import_usage_rows),
+            default=max(all_dates),
+        )
+        usage_today = sum(v for d, v in customer_import_usage_rows if d == latest_date)
+        feedin_yesterday = sum(v for d, v in customer_feedin_rows if d == latest_date)
         metrics[SNAPSHOT_USAGE_TODAY_KWH] = round(usage_today, 6)
+        metrics[SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH] = round(feedin_yesterday, 6)
         return metrics
 
     def _extract_hourly_usage_metrics(self, usage_rows: Any) -> dict[str, Any]:
@@ -806,7 +818,8 @@ class IntegrationBlueprintApiClient:
         if not isinstance(usage_rows, list):
             return {}
 
-        hourly_imports: list[tuple[dt.datetime, float]] = []
+        hourly_customer_import_usage_rows: list[tuple[dt.datetime, float]] = []
+        hourly_customer_feedin_rows: list[tuple[dt.datetime, float]] = []
         for row in usage_rows:
             if not isinstance(row, dict):
                 continue
@@ -818,16 +831,26 @@ class IntegrationBlueprintApiClient:
             parsed_stamp = self._parse_iso_datetime(stamp)
             if parsed_stamp is None:
                 continue
-            if usage_type == "import":
-                hourly_imports.append((parsed_stamp, value))
+            # Flipped usageType is retailer-perspective; API Export is customer import.
+            if usage_type == "export":
+                hourly_customer_import_usage_rows.append((parsed_stamp, abs(value)))
+            elif usage_type == "import":
+                hourly_customer_feedin_rows.append((parsed_stamp, abs(value)))
 
-        if not hourly_imports:
+        if not hourly_customer_import_usage_rows:
             return {}
 
-        latest_date = max(stamp.date() for stamp, _ in hourly_imports)
+        latest_date = max(
+            stamp.date() for stamp, _ in hourly_customer_import_usage_rows
+        )
         latest_period_rows = [
             (stamp, value)
-            for stamp, value in hourly_imports
+            for stamp, value in hourly_customer_import_usage_rows
+            if stamp.date() == latest_date
+        ]
+        latest_feedin_rows = [
+            (stamp, value)
+            for stamp, value in hourly_customer_feedin_rows
             if stamp.date() == latest_date
         ]
         if not latest_period_rows:
@@ -838,6 +861,10 @@ class IntegrationBlueprintApiClient:
         return {
             SNAPSHOT_USAGE_TODAY_KWH: round(
                 sum(value for _, value in latest_period_rows),
+                6,
+            ),
+            SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH: round(
+                sum(value for _, value in latest_feedin_rows),
                 6,
             ),
             SNAPSHOT_USAGE_PERIOD_START: period_start.isoformat(),

@@ -28,6 +28,7 @@ MAX_CURRENT_RATE_REFRESH_INTERVAL_MINUTES = 60
 SNAPSHOT_PLAN_NAME = "plan_name"
 SNAPSHOT_AMOUNT_DUE_AUD = "amount_due_aud"
 SNAPSHOT_USAGE_TODAY_KWH = "usage_today_kwh"
+SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH = "usage_feedin_yesterday_kwh"
 SNAPSHOT_USAGE_PERIOD_START = "usage_period_start"
 SNAPSHOT_USAGE_PERIOD_END = "usage_period_end"
 SNAPSHOT_TOTAL_USAGE_KWH = "total_usage_kwh"
