@@ -23,12 +23,12 @@ if TYPE_CHECKING:
 ENTITY_DESCRIPTIONS = (
     BinarySensorEntityDescription(
         key=SNAPSHOT_AUTH_OK,
-        name="Flipped Energy Authenticated",
+        name="Authenticated",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
     ),
     BinarySensorEntityDescription(
         key=SNAPSHOT_DATA_FRESH,
-        name="Flipped Energy Data Fresh",
+        name="Data Fresh",
         icon="mdi:database-check",
     ),
 )
@@ -59,6 +59,7 @@ class IntegrationBlueprintBinarySensor(IntegrationBlueprintEntity, BinarySensorE
     ) -> None:
         """Initialize the binary_sensor class."""
         super().__init__(coordinator, unique_id_suffix=entity_description.key)
+        self._attr_has_entity_name = False
         self.entity_description = entity_description
 
     @property

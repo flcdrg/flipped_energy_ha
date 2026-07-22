@@ -67,63 +67,59 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_usage_yesterday")
+    sensor_state = hass.states.get("sensor.usage_yesterday")
     assert sensor_state is not None
     assert sensor_state.state == "8.9"
     assert sensor_state.attributes.get("usage_period_start") == "2026-07-20T00:00:00"
     assert sensor_state.attributes.get("usage_period_end") == "2026-07-20"
 
-    feedin_yesterday_state = hass.states.get("sensor.flipped_energy_feedin_yesterday")
+    feedin_yesterday_state = hass.states.get("sensor.feed_in_yesterday")
     assert feedin_yesterday_state is not None
     assert feedin_yesterday_state.state == "1.2"
 
-    usage_period_state = hass.states.get("sensor.flipped_energy_usage_period_end")
+    usage_period_state = hass.states.get("sensor.usage_period_end")
     assert usage_period_state is not None
     assert usage_period_state.state == "2026-07-20"
 
-    plan_state = hass.states.get("sensor.flipped_energy_plan_name")
+    plan_state = hass.states.get("sensor.plan_name")
     assert plan_state is not None
     assert plan_state.state == "Flipped Saver"
 
-    binary_sensor_state = hass.states.get("binary_sensor.flipped_energy_authenticated")
+    binary_sensor_state = hass.states.get("binary_sensor.authenticated")
     assert binary_sensor_state is not None
     assert binary_sensor_state.state == "on"
 
-    amount_due_state = hass.states.get("sensor.flipped_energy_amount_due")
+    amount_due_state = hass.states.get("sensor.amount_due")
     assert amount_due_state is not None
     assert amount_due_state.state == "123.45"
 
-    import_rate_state = hass.states.get("sensor.flipped_energy_import_rate")
+    import_rate_state = hass.states.get("sensor.import_rate")
     assert import_rate_state is not None
     assert import_rate_state.attributes.get("gst_included") is True
     assert len(import_rate_state.attributes.get("import_rate_blocks", [])) == 1
 
-    import_tou_state = hass.states.get("sensor.flipped_energy_import_tou_blocks")
+    import_tou_state = hass.states.get("sensor.import_tou_blocks")
     assert import_tou_state is not None
     assert import_tou_state.state == "1"
 
-    feedin_tou_state = hass.states.get("sensor.flipped_energy_feed_in_tou_blocks")
+    feedin_tou_state = hass.states.get("sensor.feed_in_tou_blocks")
     assert feedin_tou_state is not None
     assert feedin_tou_state.state == "1"
 
-    import_schedule_state = hass.states.get("sensor.flipped_energy_import_tou_schedule")
+    import_schedule_state = hass.states.get("sensor.import_tou_schedule")
     assert import_schedule_state is not None
     assert "09:00-17:00" in import_schedule_state.state
 
-    feedin_schedule_state = hass.states.get(
-        "sensor.flipped_energy_feed_in_tou_schedule"
-    )
+    feedin_schedule_state = hass.states.get("sensor.feed_in_tou_schedule")
     assert feedin_schedule_state is not None
     assert "00:00-00:00" in feedin_schedule_state.state
 
-    supply_state = hass.states.get("sensor.flipped_energy_supply_charge_daily")
+    supply_state = hass.states.get("sensor.supply_charge_daily")
     assert supply_state is not None
     assert supply_state.state == "121.0"
     assert supply_state.attributes.get("gst_included") is True
 
-    supply_incl_state = hass.states.get(
-        "sensor.flipped_energy_supply_charge_daily_incl_gst"
-    )
+    supply_incl_state = hass.states.get("sensor.supply_charge_daily_incl_gst")
     assert supply_incl_state is None
 
 
@@ -147,7 +143,7 @@ async def test_unload_entry(hass, mock_config_entry) -> None:
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_usage_yesterday")
+    sensor_state = hass.states.get("sensor.usage_yesterday")
     assert sensor_state is None or sensor_state.state == "unavailable"
 
 
@@ -163,7 +159,7 @@ async def test_setup_entry_not_ready_on_api_error(hass, mock_config_entry) -> No
         await hass.async_block_till_done()
 
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
-    assert hass.states.get("sensor.flipped_energy_plan_name") is None
+    assert hass.states.get("sensor.plan_name") is None
 
 
 async def test_setup_entry_include_gst_option_adjusts_dynamic_values(
@@ -221,12 +217,12 @@ async def test_setup_entry_include_gst_option_adjusts_dynamic_values(
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    import_rate = hass.states.get("sensor.flipped_energy_import_rate")
+    import_rate = hass.states.get("sensor.import_rate")
     assert import_rate is not None
     assert import_rate.state == "11.0"
     assert import_rate.attributes.get("gst_included") is True
 
-    supply_state = hass.states.get("sensor.flipped_energy_supply_charge_daily")
+    supply_state = hass.states.get("sensor.supply_charge_daily")
     assert supply_state is not None
     assert supply_state.state == "121.0"
     assert supply_state.attributes.get("gst_included") is True
@@ -290,7 +286,7 @@ async def test_current_import_tariff_shows_when_refresh_is_current(
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.flipped_energy_current_import_tariff")
+    state = hass.states.get("sensor.current_import_tariff")
     assert state is not None
     assert state.state == "57.62"
     assert state.attributes.get("is_stale") is False
@@ -356,7 +352,7 @@ async def test_current_import_tariff_hides_when_boundary_is_stale(
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = hass.states.get("sensor.flipped_energy_current_import_tariff")
+    state = hass.states.get("sensor.current_import_tariff")
     assert state is not None
     assert state.state == "unknown"
     assert state.attributes.get("is_stale") is True
@@ -404,11 +400,11 @@ async def test_gst_toggle_refreshes_sensor_states_immediately(
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-        import_rate = hass.states.get("sensor.flipped_energy_import_rate")
+        import_rate = hass.states.get("sensor.import_rate")
         assert import_rate is not None
         assert import_rate.state == "10.0"
 
-        feedin_rate = hass.states.get("sensor.flipped_energy_feed_in_rate")
+        feedin_rate = hass.states.get("sensor.feed_in_rate")
         assert feedin_rate is not None
         assert feedin_rate.state == "2.0"
 
@@ -418,11 +414,11 @@ async def test_gst_toggle_refreshes_sensor_states_immediately(
         )
         await hass.async_block_till_done()
 
-        import_rate = hass.states.get("sensor.flipped_energy_import_rate")
+        import_rate = hass.states.get("sensor.import_rate")
         assert import_rate is not None
         assert import_rate.state == "11.0"
 
-        feedin_rate = hass.states.get("sensor.flipped_energy_feed_in_rate")
+        feedin_rate = hass.states.get("sensor.feed_in_rate")
         assert feedin_rate is not None
         assert feedin_rate.state == "2.0"
         reload.assert_not_awaited()

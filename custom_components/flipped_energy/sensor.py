@@ -48,105 +48,105 @@ if TYPE_CHECKING:
 ENTITY_DESCRIPTIONS = (
     SensorEntityDescription(
         key=SNAPSHOT_PLAN_NAME,
-        name="Flipped Energy Plan Name",
+        name="Plan Name",
         icon="mdi:lightning-bolt-circle",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_AMOUNT_DUE_AUD,
-        name="Flipped Energy Amount Due",
+        name="Amount Due",
         icon="mdi:cash",
         native_unit_of_measurement="AUD",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_USAGE_TODAY_KWH,
-        name="Flipped Energy Usage Yesterday",
+        name="Usage Yesterday",
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
-        name="Flipped Energy Feedin Yesterday",
+        name="Feed-In Yesterday",
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_USAGE_PERIOD_END,
-        name="Flipped Energy Usage Period End",
+        name="Usage Period End",
         device_class=SensorDeviceClass.DATE,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_TOTAL_USAGE_KWH,
-        name="Flipped Energy Total Usage",
+        name="Total Usage",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.TOTAL,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_TOTAL_FEEDIN_KWH,
-        name="Flipped Energy Total Feed-In",
+        name="Total Feed-In",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.TOTAL,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_IMPORT_RATE_CENTS,
-        name="Flipped Energy Import Rate",
+        name="Import Rate",
         icon="mdi:currency-usd",
         native_unit_of_measurement="c/kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_FEEDIN_RATE_CENTS,
-        name="Flipped Energy Feed-In Rate",
+        name="Feed-In Rate",
         icon="mdi:solar-power-variant",
         native_unit_of_measurement="c/kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
-        name="Flipped Energy Current Import Tariff",
+        name="Current Import Tariff",
         icon="mdi:flash",
         native_unit_of_measurement="c/kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS,
-        name="Flipped Energy Current Feed-In Tariff",
+        name="Current Feed-In Tariff",
         icon="mdi:solar-power",
         native_unit_of_measurement="c/kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_IMPORT_RATE_BLOCKS,
-        name="Flipped Energy Import TOU Blocks",
+        name="Import TOU Blocks",
         icon="mdi:clock-time-eight-outline",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_FEEDIN_RATE_BLOCKS,
-        name="Flipped Energy Feed-In TOU Blocks",
+        name="Feed-In TOU Blocks",
         icon="mdi:clock-time-eight-outline",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_IMPORT_TOU_SCHEDULE,
-        name="Flipped Energy Import TOU Schedule",
+        name="Import TOU Schedule",
         icon="mdi:table-clock",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_FEEDIN_TOU_SCHEDULE,
-        name="Flipped Energy Feed-In TOU Schedule",
+        name="Feed-In TOU Schedule",
         icon="mdi:table-clock",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
-        name="Flipped Energy Supply Charge Daily",
+        name="Supply Charge Daily",
         icon="mdi:transmission-tower",
         native_unit_of_measurement="c/day",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key=SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
-        name="Flipped Energy Last Successful Update",
+        name="Last Successful Update",
         icon="mdi:clock-check",
         device_class=SensorDeviceClass.TIMESTAMP,
     ),
@@ -180,6 +180,7 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
     ) -> None:
         """Initialize the sensor class."""
         super().__init__(coordinator, unique_id_suffix=entity_description.key)
+        self._attr_has_entity_name = False
         self.entity_description = entity_description
 
     @property
