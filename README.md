@@ -14,7 +14,8 @@ This integration authenticates against the Flipped API and exposes plan, billing
   - usage
   - usage period end (date companion sensor)
   - total usage and total feed-in
-  - import and feed-in rates
+  - import and feed-in rates (with time-of-day rate window attributes when available)
+  - daily supply charge (excl and incl GST)
   - last successful update timestamp
 - Binary sensors for:
   - authenticated status

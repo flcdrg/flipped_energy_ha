@@ -23,10 +23,14 @@ from .const import (
     SNAPSHOT_BILLING_PERIOD_END,
     SNAPSHOT_BILLING_PERIOD_START,
     SNAPSHOT_DATA_FRESH,
+    SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
+    SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
     SNAPSHOT_PLAN_NAME,
+    SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
+    SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_DAILY_ROWS,
@@ -115,6 +119,7 @@ class IntegrationBlueprintApiClient:
         "/Usage/usage/getsettlements",
     )
     _RATE_DOLLARS_THRESHOLD = 2
+    _CURRENCY_DOLLARS_THRESHOLD = 20
 
     def __init__(
         self,
@@ -366,6 +371,14 @@ class IntegrationBlueprintApiClient:
             rates = self._extract_rates_from_account(account)
             snapshot[SNAPSHOT_IMPORT_RATE_CENTS] = rates.get("import_rate_cents")
             snapshot[SNAPSHOT_FEEDIN_RATE_CENTS] = rates.get("feedin_rate_cents")
+            snapshot[SNAPSHOT_IMPORT_RATE_BLOCKS] = rates.get("import_rate_blocks")
+            snapshot[SNAPSHOT_FEEDIN_RATE_BLOCKS] = rates.get("feedin_rate_blocks")
+            snapshot[SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS] = rates.get(
+                "supply_charge_daily_cents"
+            )
+            snapshot[SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS] = rates.get(
+                "supply_charge_daily_incl_gst_cents"
+            )
 
             amount_due = self._extract_amount_due_from_account(account)
             if amount_due is not None:
@@ -402,15 +415,19 @@ class IntegrationBlueprintApiClient:
         first = accounts[0]
         return first if isinstance(first, dict) else None
 
-    def _extract_rates_from_account(
+    def _extract_rates_from_account(  # noqa: PLR0912, PLR0915
         self, account: dict[str, Any]
-    ) -> dict[str, float | None]:
-        """Extract import/feed-in rates (c/kWh) from account billing units."""
+    ) -> dict[str, float | list[dict[str, Any]] | None]:
+        """Extract import/feed-in rates and supply charges from billing units."""
         current_plan = (account.get("product") or {}).get("currentPlan")
         if not isinstance(current_plan, dict):
             return {
                 "import_rate_cents": None,
                 "feedin_rate_cents": None,
+                "import_rate_blocks": [],
+                "feedin_rate_blocks": [],
+                "supply_charge_daily_cents": None,
+                "supply_charge_daily_incl_gst_cents": None,
             }
 
         billing_units = current_plan.get("billingUnits")
@@ -418,15 +435,31 @@ class IntegrationBlueprintApiClient:
             return {
                 "import_rate_cents": None,
                 "feedin_rate_cents": None,
+                "import_rate_blocks": [],
+                "feedin_rate_blocks": [],
+                "supply_charge_daily_cents": None,
+                "supply_charge_daily_incl_gst_cents": None,
             }
 
         import_weighted_total = 0.0
         import_weight_total = 0.0
         import_flat_values: list[float] = []
         feed_in_values: list[float] = []
+        import_rate_blocks: list[dict[str, Any]] = []
+        feedin_rate_blocks: list[dict[str, Any]] = []
+        supply_daily_excl_values: list[float] = []
+        supply_daily_incl_values: list[float] = []
 
         for unit in billing_units:
             if not isinstance(unit, dict):
+                continue
+
+            if self._is_supply_charge_unit(unit):
+                supply = self._extract_daily_supply_charge_from_unit(unit)
+                if supply["excl_cents"] is not None:
+                    supply_daily_excl_values.append(supply["excl_cents"])
+                if supply["incl_cents"] is not None:
+                    supply_daily_incl_values.append(supply["incl_cents"])
                 continue
 
             charge = self._coerce_float(unit.get("chargePerKwh"))
@@ -435,19 +468,28 @@ class IntegrationBlueprintApiClient:
 
             unit_type = self._coerce_text(unit.get("billingUnitType")) or ""
             name = (self._coerce_text(unit.get("name")) or "").lower()
+            rate_block = self._build_rate_block(unit, charge)
 
             if unit_type == "FeedInTariff" or "feed" in name:
-                feed_in_values.append(abs(charge * 100))
+                feed_in_cents = abs(charge * 100)
+                feed_in_values.append(feed_in_cents)
+                if rate_block:
+                    rate_block["rate_cents_kwh"] = round(feed_in_cents, 6)
+                    feedin_rate_blocks.append(rate_block)
                 continue
 
             if charge <= 0:
                 continue
 
             duration = self._billing_unit_duration_minutes(unit)
-            import_flat_values.append(charge * 100)
+            import_cents = charge * 100
+            import_flat_values.append(import_cents)
             if duration is not None and duration > 0:
-                import_weighted_total += charge * 100 * duration
+                import_weighted_total += import_cents * duration
                 import_weight_total += duration
+            if rate_block:
+                rate_block["rate_cents_kwh"] = round(import_cents, 6)
+                import_rate_blocks.append(rate_block)
 
         import_rate_cents: float | None = None
         if import_weight_total > 0:
@@ -456,6 +498,12 @@ class IntegrationBlueprintApiClient:
             import_rate_cents = sum(import_flat_values) / len(import_flat_values)
 
         feedin_rate_cents = min(feed_in_values) if feed_in_values else None
+        supply_charge_daily_cents = (
+            min(supply_daily_excl_values) if supply_daily_excl_values else None
+        )
+        supply_charge_daily_incl_gst_cents = (
+            min(supply_daily_incl_values) if supply_daily_incl_values else None
+        )
 
         return {
             "import_rate_cents": round(import_rate_cents, 6)
@@ -463,6 +511,17 @@ class IntegrationBlueprintApiClient:
             else None,
             "feedin_rate_cents": round(feedin_rate_cents, 6)
             if feedin_rate_cents is not None
+            else None,
+            "import_rate_blocks": self._sort_rate_blocks(import_rate_blocks),
+            "feedin_rate_blocks": self._sort_rate_blocks(feedin_rate_blocks),
+            "supply_charge_daily_cents": round(supply_charge_daily_cents, 6)
+            if supply_charge_daily_cents is not None
+            else None,
+            "supply_charge_daily_incl_gst_cents": round(
+                supply_charge_daily_incl_gst_cents,
+                6,
+            )
+            if supply_charge_daily_incl_gst_cents is not None
             else None,
         }
 
@@ -477,6 +536,110 @@ class IntegrationBlueprintApiClient:
         if end > start:
             return end - start
         return (24 * 60 - start) + end
+
+    def _is_supply_charge_unit(self, unit: dict[str, Any]) -> bool:
+        """Return True when a billing unit represents a supply charge."""
+        unit_type = (self._coerce_text(unit.get("billingUnitType")) or "").lower()
+        name = (self._coerce_text(unit.get("name")) or "").lower()
+        return "supply" in unit_type or "supply" in name
+
+    def _extract_daily_supply_charge_from_unit(
+        self,
+        unit: dict[str, Any],
+    ) -> dict[str, float | None]:
+        """Extract daily supply charge values from a single billing unit."""
+        period_text = (
+            self._coerce_text(unit.get("period"))
+            or self._coerce_text(unit.get("periodicity"))
+            or self._coerce_text(unit.get("frequency"))
+            or ""
+        ).lower()
+        if period_text and "day" not in period_text and "dail" not in period_text:
+            return {"excl_cents": None, "incl_cents": None}
+
+        unit_name = (self._coerce_text(unit.get("name")) or "").lower()
+        periodic_charge = self._coerce_float(unit.get("periodicCharge"))
+        charge_excl: float | None = None
+        charge_incl: float | None = None
+        if periodic_charge is not None:
+            if "incl" in unit_name and "gst" in unit_name:
+                charge_incl = periodic_charge
+            else:
+                charge_excl = periodic_charge
+
+        if charge_incl is None:
+            charge_incl = self._coerce_float(unit.get("periodicChargeInclGst"))
+        if charge_incl is None:
+            charge_incl = self._coerce_float(unit.get("periodicChargeIncludingGst"))
+
+        if charge_excl is None and "excl" in unit_name and "gst" in unit_name:
+            charge_excl = self._coerce_float(unit.get("chargePerKwh"))
+        if charge_incl is None and "incl" in unit_name and "gst" in unit_name:
+            charge_incl = self._coerce_float(unit.get("chargePerKwh"))
+
+        excl_cents = self._normalize_currency_candidate_to_cents(charge_excl)
+        incl_cents = self._normalize_currency_candidate_to_cents(charge_incl)
+
+        if incl_cents is None and excl_cents is not None:
+            gst_percent = self._coerce_float(unit.get("gstPercent"))
+            if gst_percent is None:
+                gst_percent = self._coerce_float(unit.get("gstPercentage"))
+            if gst_percent is not None and gst_percent >= 0:
+                incl_cents = excl_cents * (1 + gst_percent / 100)
+
+        return {
+            "excl_cents": round(excl_cents, 6) if excl_cents is not None else None,
+            "incl_cents": round(incl_cents, 6) if incl_cents is not None else None,
+        }
+
+    def _normalize_currency_candidate_to_cents(
+        self,
+        value: float | None,
+    ) -> float | None:
+        """Normalize a currency value into cents, supporting dollars or cents."""
+        if value is None:
+            return None
+        if abs(value) < self._CURRENCY_DOLLARS_THRESHOLD:
+            return value * 100
+        return value
+
+    def _build_rate_block(
+        self,
+        unit: dict[str, Any],
+        charge_per_kwh: float,
+    ) -> dict[str, Any] | None:
+        """Build a normalized time-of-day rate block for sensor attributes."""
+        start = unit.get("timeOfDayStartMinutes")
+        end = unit.get("timeOfDayEndMinutes")
+        if not isinstance(start, int) or not isinstance(end, int):
+            return None
+
+        block: dict[str, Any] = {
+            "start_minutes": start,
+            "end_minutes": end,
+            "start_time": self._minutes_to_hhmm(start),
+            "end_time": self._minutes_to_hhmm(end),
+            "rate_cents_kwh": round(charge_per_kwh * 100, 6),
+        }
+        period_name = self._coerce_text(unit.get("name"))
+        if period_name:
+            block["name"] = period_name
+        return block
+
+    def _minutes_to_hhmm(self, total_minutes: int) -> str:
+        """Convert minutes since midnight into HH:MM text."""
+        normalized = total_minutes % (24 * 60)
+        return f"{normalized // 60:02d}:{normalized % 60:02d}"
+
+    def _sort_rate_blocks(self, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Sort rate blocks by start/end minute for stable sensor attributes."""
+        return sorted(
+            blocks,
+            key=lambda block: (
+                block.get("start_minutes", 0),
+                block.get("end_minutes", 0),
+            ),
+        )
 
     def _extract_amount_due_from_account(self, account: dict[str, Any]) -> float | None:
         """Extract amount due from account/invoice fields when available."""

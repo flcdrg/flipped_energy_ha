@@ -29,6 +29,28 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
                 "total_feedin_kwh": 41.5,
                 "import_rate_cents_kwh": 29.5,
                 "feedin_rate_cents_kwh": 8.0,
+                "import_rate_blocks": [
+                    {
+                        "name": "Day",
+                        "start_minutes": 540,
+                        "end_minutes": 1020,
+                        "start_time": "09:00",
+                        "end_time": "17:00",
+                        "rate_cents_kwh": 9.93,
+                    }
+                ],
+                "feedin_rate_blocks": [
+                    {
+                        "name": "Solar Feed In Tariff",
+                        "start_minutes": 0,
+                        "end_minutes": 0,
+                        "start_time": "00:00",
+                        "end_time": "00:00",
+                        "rate_cents_kwh": 2.0,
+                    }
+                ],
+                "supply_charge_daily_cents": 110.0,
+                "supply_charge_daily_incl_gst_cents": 121.0,
                 "auth_ok": True,
                 "data_fresh": True,
                 "last_successful_update": "2026-07-21T00:00:00+00:00",
@@ -59,6 +81,20 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
     amount_due_state = hass.states.get("sensor.flipped_energy_amount_due")
     assert amount_due_state is not None
     assert amount_due_state.state == "123.45"
+
+    import_rate_state = hass.states.get("sensor.flipped_energy_import_rate")
+    assert import_rate_state is not None
+    assert len(import_rate_state.attributes.get("import_rate_blocks", [])) == 1
+
+    supply_state = hass.states.get("sensor.flipped_energy_supply_charge_daily")
+    assert supply_state is not None
+    assert supply_state.state == "110.0"
+
+    supply_incl_state = hass.states.get(
+        "sensor.flipped_energy_supply_charge_daily_incl_gst"
+    )
+    assert supply_incl_state is not None
+    assert supply_incl_state.state == "121.0"
 
 
 async def test_unload_entry(hass, mock_config_entry) -> None:

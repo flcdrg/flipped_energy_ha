@@ -28,6 +28,10 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     total_feedin_kwh: float
     import_rate_cents_kwh: float
     feedin_rate_cents_kwh: float
+    import_rate_blocks: list[dict[str, Any]]
+    feedin_rate_blocks: list[dict[str, Any]]
+    supply_charge_daily_cents: float
+    supply_charge_daily_incl_gst_cents: float
     billing_period_start: str
     billing_period_end: str
     auth_ok: bool

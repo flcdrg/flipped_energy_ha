@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -14,10 +14,14 @@ from homeassistant.components.sensor import (
 
 from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
+    SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
+    SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
     SNAPSHOT_PLAN_NAME,
+    SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
+    SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_PERIOD_END,
@@ -86,6 +90,20 @@ ENTITY_DESCRIPTIONS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
+        key=SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
+        name="Flipped Energy Supply Charge Daily",
+        icon="mdi:transmission-tower",
+        native_unit_of_measurement="c/day",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
+        name="Flipped Energy Supply Charge Daily (Incl GST)",
+        icon="mdi:transmission-tower",
+        native_unit_of_measurement="c/day",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
         key=SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
         name="Flipped Energy Last Successful Update",
         icon="mdi:clock-check",
@@ -138,16 +156,34 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         return value
 
     @property
-    def extra_state_attributes(self) -> dict[str, str] | None:
-        """Return the usage period metadata for the usage sensor."""
-        if self.entity_description.key != SNAPSHOT_USAGE_TODAY_KWH:
-            return None
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional metadata for usage, rates, and supply charges."""
+        key = self.entity_description.key
+        attributes: dict[str, Any] = {}
 
-        attributes: dict[str, str] = {}
-        period_start = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_START)
-        period_end = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_END)
-        if period_start is not None:
-            attributes[SNAPSHOT_USAGE_PERIOD_START] = str(period_start)
-        if period_end is not None:
-            attributes[SNAPSHOT_USAGE_PERIOD_END] = str(period_end)
+        if key == SNAPSHOT_USAGE_TODAY_KWH:
+            period_start = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_START)
+            period_end = self.coordinator.data.get(SNAPSHOT_USAGE_PERIOD_END)
+            if period_start is not None:
+                attributes[SNAPSHOT_USAGE_PERIOD_START] = str(period_start)
+            if period_end is not None:
+                attributes[SNAPSHOT_USAGE_PERIOD_END] = str(period_end)
+
+        if key == SNAPSHOT_IMPORT_RATE_CENTS:
+            rate_blocks = self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
+            if isinstance(rate_blocks, list) and rate_blocks:
+                attributes[SNAPSHOT_IMPORT_RATE_BLOCKS] = rate_blocks
+
+        if key == SNAPSHOT_FEEDIN_RATE_CENTS:
+            rate_blocks = self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
+            if isinstance(rate_blocks, list) and rate_blocks:
+                attributes[SNAPSHOT_FEEDIN_RATE_BLOCKS] = rate_blocks
+
+        if key == SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS:
+            incl_gst = self.coordinator.data.get(
+                SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS
+            )
+            if incl_gst is not None:
+                attributes[SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS] = incl_gst
+
         return attributes or None
