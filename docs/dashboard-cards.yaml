@@ -1,0 +1,47 @@
+# Flipped Energy Dashboard Card Templates
+#
+# Usage:
+# - In Home Assistant dashboard Raw YAML editor, paste a full card block including
+#   `type`, `title`, and `content`.
+# - In the visual Markdown card editor Content field, paste only the Jinja
+#   template body (not the card keys).
+
+- type: markdown
+  title: Import TOU Rates
+  content: |-
+    {% set blocks = state_attr('sensor.flipped_energy_import_tou_blocks', 'import_rate_blocks') or [] %}
+    {% if not blocks %}
+    No TOU blocks available.
+    {% else -%}
+    | Period | Time | Rate |
+    |:--|:--|--:|
+    {%- for b in blocks %}
+    | {{ b.name if b.name is defined else 'Block ' ~ loop.index }} | {{ b.start_time }}-{{ b.end_time }} | {{ '%.4f'|format(b.rate_cents_kwh|float(0)) }} c/kWh |
+    {%- endfor %}
+    {%- endif %}
+
+- type: markdown
+  title: Feed-In TOU Rates
+  content: |-
+    {% set blocks = state_attr('sensor.flipped_energy_feed_in_tou_blocks', 'feedin_rate_blocks') or [] %}
+    {% if not blocks %}
+    No feed-in TOU blocks available.
+    {% else -%}
+    | Period | Time | Rate |
+    |:--|:--|--:|
+    {%- for b in blocks %}
+    | {{ b.name if b.name is defined else 'Block ' ~ loop.index }} | {{ b.start_time }}-{{ b.end_time }} | {{ '%.4f'|format(b.rate_cents_kwh|float(0)) }} c/kWh |
+    {%- endfor %}
+    {%- endif %}
+
+- type: entities
+  title: Flipped Energy TOU Summary
+  entities:
+    - entity: sensor.flipped_energy_import_tou_schedule
+      name: Import schedule
+    - entity: sensor.flipped_energy_feed_in_tou_schedule
+      name: Feed-in schedule
+    - entity: sensor.flipped_energy_import_tou_blocks
+      name: Import TOU block count
+    - entity: sensor.flipped_energy_feed_in_tou_blocks
+      name: Feed-in TOU block count

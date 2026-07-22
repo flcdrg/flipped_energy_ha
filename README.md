@@ -59,6 +59,22 @@ Available options in the integration options flow:
 - enable/disable usage data
 - enable/disable invoice data
 
+## Dashboard Cards (TOU)
+
+Time-of-use data is exposed by these entities:
+
+- `sensor.flipped_energy_import_tou_schedule`
+- `sensor.flipped_energy_feed_in_tou_schedule`
+- `sensor.flipped_energy_import_tou_blocks`
+- `sensor.flipped_energy_feed_in_tou_blocks`
+
+Ready-to-paste dashboard templates are provided in `docs/dashboard-cards.yaml`.
+
+Important markdown rendering note:
+
+- If you are editing a card in raw YAML mode, paste the full card block (`type`, `title`, and `content`).
+- If you are editing a Markdown card's Content field in the visual editor, paste only the Jinja template body (do not include `type`, `title`, or `content`).
+
 ## Historical Statistics in Home Assistant
 
 The integration imports historical usage into Home Assistant Recorder as external statistics.
