@@ -52,4 +52,5 @@ class IntegrationBlueprintData:
     integration: Integration
     include_gst: bool
     refresh_interval_minutes: int
+    current_rate_refresh_interval_minutes: int
     enabled_pages: dict[str, bool]

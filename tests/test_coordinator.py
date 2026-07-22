@@ -51,6 +51,12 @@ async def test_async_update_data_imports_usage_statistics(
     }
 
     mock_config_entry.runtime_data = SimpleNamespace(client=client)
+    mock_config_entry.runtime_data.enabled_pages = {
+        "plan": True,
+        "usage": True,
+        "invoices": True,
+    }
+    mock_config_entry.runtime_data.refresh_interval_minutes = 30
     coordinator = BlueprintDataUpdateCoordinator(
         hass=hass,
         logger=getLogger(__name__),
@@ -110,6 +116,12 @@ async def test_async_update_data_skips_duplicate_usage_statistics(
     }
 
     mock_config_entry.runtime_data = SimpleNamespace(client=client)
+    mock_config_entry.runtime_data.enabled_pages = {
+        "plan": True,
+        "usage": True,
+        "invoices": True,
+    }
+    mock_config_entry.runtime_data.refresh_interval_minutes = 30
     coordinator = BlueprintDataUpdateCoordinator(
         hass=hass,
         logger=getLogger(__name__),
@@ -140,6 +152,12 @@ async def test_build_statistic_id_is_recorder_valid(hass, mock_config_entry) -> 
     """Test generated statistic IDs follow recorder validation constraints."""
     client = AsyncMock()
     mock_config_entry.runtime_data = SimpleNamespace(client=client)
+    mock_config_entry.runtime_data.enabled_pages = {
+        "plan": True,
+        "usage": True,
+        "invoices": True,
+    }
+    mock_config_entry.runtime_data.refresh_interval_minutes = 30
     coordinator = BlueprintDataUpdateCoordinator(
         hass=hass,
         logger=getLogger(__name__),
@@ -167,6 +185,12 @@ async def test_async_update_data_tolerates_statistics_import_failure(
     }
 
     mock_config_entry.runtime_data = SimpleNamespace(client=client)
+    mock_config_entry.runtime_data.enabled_pages = {
+        "plan": True,
+        "usage": True,
+        "invoices": True,
+    }
+    mock_config_entry.runtime_data.refresh_interval_minutes = 30
     coordinator = BlueprintDataUpdateCoordinator(
         hass=hass,
         logger=getLogger(__name__),
@@ -183,3 +207,44 @@ async def test_async_update_data_tolerates_statistics_import_failure(
         data = await coordinator._async_update_data()
 
     assert data["usage_today_kwh"] == 8.0
+
+
+async def test_async_update_data_uses_plan_only_between_full_refreshes(
+    hass,
+    mock_config_entry,
+) -> None:
+    """Test fast polls only request plan data and keep previous static fields."""
+    client = AsyncMock()
+    client.async_get_data.return_value = {
+        "plan_name": "Flipped Saver",
+        "import_rate_cents_kwh": 30.0,
+        "feedin_rate_cents_kwh": 2.0,
+    }
+
+    mock_config_entry.runtime_data = SimpleNamespace(
+        client=client,
+        enabled_pages={"plan": True, "usage": True, "invoices": True},
+        refresh_interval_minutes=30,
+    )
+    coordinator = BlueprintDataUpdateCoordinator(
+        hass=hass,
+        logger=getLogger(__name__),
+        name=mock_config_entry.domain,
+        update_interval=timedelta(minutes=5),
+        config_entry=mock_config_entry,
+    )
+    coordinator.data = {
+        "usage_today_kwh": 7.5,
+        "total_usage_kwh": 200.0,
+        "amount_due_aud": 50.0,
+    }
+    coordinator._last_full_refresh_at = dt.datetime.now(dt.UTC)
+
+    data = await coordinator._async_update_data()
+
+    client.async_get_data.assert_awaited_once_with(
+        enabled_pages={"plan": True, "usage": False, "invoices": False}
+    )
+    assert data["usage_today_kwh"] == 7.5
+    assert data["amount_due_aud"] == 50.0
+    assert data["import_rate_cents_kwh"] == 30.0

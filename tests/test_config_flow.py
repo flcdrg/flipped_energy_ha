@@ -13,6 +13,7 @@ from custom_components.flipped_energy.api import (
     IntegrationBlueprintApiClientAuthenticationError,
 )
 from custom_components.flipped_energy.const import (
+    CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     CONF_ENABLE_INVOICES_PAGE,
     CONF_ENABLE_PLAN_PAGE,
     CONF_ENABLE_USAGE_PAGE,
@@ -94,6 +95,7 @@ async def test_options_flow_success(hass, mock_config_entry) -> None:
         result["flow_id"],
         {
             CONF_REFRESH_INTERVAL_MINUTES: 45,
+            CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES: 10,
             CONF_INCLUDE_GST: True,
             CONF_ENABLE_PLAN_PAGE: True,
             CONF_ENABLE_USAGE_PAGE: True,
@@ -102,6 +104,7 @@ async def test_options_flow_success(hass, mock_config_entry) -> None:
     )
     assert result2["type"] is FlowResultType.CREATE_ENTRY
     assert result2["data"][CONF_REFRESH_INTERVAL_MINUTES] == 45
+    assert result2["data"][CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES] == 10
     assert result2["data"][CONF_INCLUDE_GST] is True
     assert result2["data"][CONF_ENABLE_INVOICES_PAGE] is False
 
@@ -117,6 +120,7 @@ async def test_options_flow_requires_at_least_one_page(hass, mock_config_entry) 
         result["flow_id"],
         {
             CONF_REFRESH_INTERVAL_MINUTES: 30,
+            CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES: 10,
             CONF_INCLUDE_GST: False,
             CONF_ENABLE_PLAN_PAGE: False,
             CONF_ENABLE_USAGE_PAGE: False,

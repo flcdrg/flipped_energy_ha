@@ -145,18 +145,25 @@ class IntegrationBlueprintApiClient:
             enabled["usage"] = True
         self._enabled_pages = enabled
 
-    async def async_get_data(self) -> Any:
+    async def async_get_data(
+        self,
+        enabled_pages: dict[str, bool] | None = None,
+    ) -> Any:
         """Authenticate and fetch a normalized account snapshot from APIs."""
+        effective_pages = self._effective_enabled_pages(enabled_pages)
         await self._ensure_authenticated()
 
         try:
-            snapshot = await self._augment_snapshot_from_api({})
+            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
         except IntegrationBlueprintApiClientAuthenticationError:
             self._authenticated = False
             await self._ensure_authenticated(force=True)
-            snapshot = await self._augment_snapshot_from_api({})
+            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
 
-        missing_required_fields = self._missing_required_fields(snapshot)
+        missing_required_fields = self._missing_required_fields(
+            snapshot,
+            effective_pages,
+        )
         if missing_required_fields:
             raise IntegrationBlueprintApiClientExtractionError(
                 "Unable to extract required fields from API responses: "
@@ -169,6 +176,23 @@ class IntegrationBlueprintApiClient:
             tz=dt.UTC
         ).isoformat()
         return snapshot
+
+    def _effective_enabled_pages(
+        self,
+        enabled_pages: dict[str, bool] | None,
+    ) -> dict[str, bool]:
+        """Return a validated page selection for this fetch."""
+        if enabled_pages is None:
+            return dict(self._enabled_pages)
+
+        effective = {
+            "plan": bool(enabled_pages.get("plan", False)),
+            "usage": bool(enabled_pages.get("usage", False)),
+            "invoices": bool(enabled_pages.get("invoices", False)),
+        }
+        if not any(effective.values()):
+            effective["usage"] = True
+        return effective
 
     async def _ensure_authenticated(self, *, force: bool = False) -> None:
         """Ensure portal session is authenticated."""
@@ -226,10 +250,14 @@ class IntegrationBlueprintApiClient:
             msg = "Authenticated token is not valid"
             raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
-    def _missing_required_fields(self, snapshot: dict[str, Any]) -> list[str]:
+    def _missing_required_fields(
+        self,
+        snapshot: dict[str, Any],
+        enabled_pages: dict[str, bool],
+    ) -> list[str]:
         """Return the required snapshot keys that are currently missing."""
         required_fields: list[str] = []
-        if self._enabled_pages.get("usage", False):
+        if enabled_pages.get("usage", False):
             required_fields.extend(
                 [
                     SNAPSHOT_USAGE_TODAY_KWH,
@@ -237,9 +265,9 @@ class IntegrationBlueprintApiClient:
                     SNAPSHOT_TOTAL_FEEDIN_KWH,
                 ]
             )
-        if self._enabled_pages.get("invoices", False):
+        if enabled_pages.get("invoices", False):
             required_fields.append(SNAPSHOT_AMOUNT_DUE_AUD)
-        if self._enabled_pages.get("plan", False):
+        if enabled_pages.get("plan", False):
             required_fields.extend(
                 [
                     SNAPSHOT_PLAN_NAME,
@@ -251,10 +279,12 @@ class IntegrationBlueprintApiClient:
         return [key for key in required_fields if snapshot.get(key) is None]
 
     async def _augment_snapshot_from_api(
-        self, snapshot: dict[str, Any]
+        self,
+        snapshot: dict[str, Any],
+        enabled_pages: dict[str, bool],
     ) -> dict[str, Any]:
         """Fill missing snapshot fields from authenticated API responses."""
-        payloads_by_path = await self._fetch_api_snapshot_payloads()
+        payloads_by_path = await self._fetch_api_snapshot_payloads(enabled_pages)
         if not payloads_by_path:
             return snapshot
 
@@ -290,26 +320,31 @@ class IntegrationBlueprintApiClient:
 
         return snapshot
 
-    async def _fetch_api_snapshot_payloads(self) -> dict[str, Any]:
+    async def _fetch_api_snapshot_payloads(
+        self,
+        enabled_pages: dict[str, bool],
+    ) -> dict[str, Any]:
         """Fetch candidate API payloads that may contain account snapshot data."""
         payloads_by_path: dict[str, Any] = {}
-        for path in self._API_SNAPSHOT_PATHS:
-            try:
-                payload = await self._fetch_api_json(path)
-            except IntegrationBlueprintApiClientError:
-                continue
-            if payload is not None:
-                payloads_by_path[path] = payload
+        if enabled_pages.get("plan", False) or enabled_pages.get("invoices", False):
+            for path in self._API_SNAPSHOT_PATHS:
+                try:
+                    payload = await self._fetch_api_json(path)
+                except IntegrationBlueprintApiClientError:
+                    continue
+                if payload is not None:
+                    payloads_by_path[path] = payload
 
         # Hourly and daily usage are time-windowed in the web app; call them
         # explicitly with rolling windows to reliably obtain recent history.
-        hourly_rows = await self._fetch_usage_rows(self._API_USAGE_HOURLY_PATH)
-        if hourly_rows:
-            payloads_by_path[self._API_USAGE_HOURLY_PATH] = hourly_rows
+        if enabled_pages.get("usage", False):
+            hourly_rows = await self._fetch_usage_rows(self._API_USAGE_HOURLY_PATH)
+            if hourly_rows:
+                payloads_by_path[self._API_USAGE_HOURLY_PATH] = hourly_rows
 
-        usage_rows = await self._fetch_daily_usage_rows()
-        if usage_rows:
-            payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
+            usage_rows = await self._fetch_daily_usage_rows()
+            if usage_rows:
+                payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
 
         return payloads_by_path
 

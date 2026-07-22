@@ -36,19 +36,32 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
 
     config_entry: IntegrationBlueprintConfigEntry
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize coordinator state for split polling."""
+        super().__init__(*args, **kwargs)
+        self._last_full_refresh_at: dt.datetime | None = None
+
     async def _async_update_data(self) -> Any:
         """Update data via library."""
+        runtime_data = self.config_entry.runtime_data
+        full_refresh = self._should_run_full_refresh()
+        pages = self._pages_for_poll(full_refresh=full_refresh)
+        if pages is None and isinstance(self.data, dict):
+            return dict(self.data)
+
         try:
-            data = await self.config_entry.runtime_data.client.async_get_data()
-            try:
-                await self._async_import_usage_statistics(data)
-            except (TypeError, ValueError, RuntimeError) as exception:
-                # Historical statistics import is best-effort and should not
-                # block setup or regular state updates.
-                self.logger.warning(
-                    "Unable to import historical usage statistics: %s",
-                    exception,
-                )
+            data = await runtime_data.client.async_get_data(enabled_pages=pages)
+            if full_refresh:
+                self._last_full_refresh_at = dt.datetime.now(dt.UTC)
+                try:
+                    await self._async_import_usage_statistics(data)
+                except (TypeError, ValueError, RuntimeError) as exception:
+                    # Historical statistics import is best-effort and should not
+                    # block setup or regular state updates.
+                    self.logger.warning(
+                        "Unable to import historical usage statistics: %s",
+                        exception,
+                    )
         except IntegrationBlueprintApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
         except IntegrationBlueprintApiClientRateLimitError as exception:
@@ -59,7 +72,41 @@ class BlueprintDataUpdateCoordinator(DataUpdateCoordinator):
         except IntegrationBlueprintApiClientError as exception:
             raise UpdateFailed(exception) from exception
         else:
+            if isinstance(self.data, dict) and isinstance(data, dict):
+                merged = dict(self.data)
+                merged.update(data)
+                return merged
             return data
+
+    def _should_run_full_refresh(self) -> bool:
+        """Return True when a full usage/invoice/plan refresh is due."""
+        runtime_data = self.config_entry.runtime_data
+        enabled_pages = runtime_data.enabled_pages
+        full_pages_enabled = enabled_pages.get("usage", False) or enabled_pages.get(
+            "invoices", False
+        )
+        if not full_pages_enabled:
+            return True
+        if self._last_full_refresh_at is None or not isinstance(self.data, dict):
+            return True
+
+        interval = dt.timedelta(minutes=runtime_data.refresh_interval_minutes)
+        return (dt.datetime.now(dt.UTC) - self._last_full_refresh_at) >= interval
+
+    def _pages_for_poll(self, *, full_refresh: bool) -> dict[str, bool] | None:
+        """Return enabled page map for this poll cycle."""
+        runtime_data = self.config_entry.runtime_data
+        if full_refresh:
+            return dict(runtime_data.enabled_pages)
+
+        if not runtime_data.enabled_pages.get("plan", False):
+            return None
+
+        return {
+            "plan": True,
+            "usage": False,
+            "invoices": False,
+        }
 
     async def _async_import_usage_statistics(self, data: Any) -> None:
         """Import fetched usage rows into recorder external statistics."""

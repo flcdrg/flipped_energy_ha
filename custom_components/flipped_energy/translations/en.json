@@ -22,7 +22,8 @@
         "step": {
             "init": {
                 "data": {
-                    "refresh_interval_minutes": "Refresh interval (minutes)",
+                    "refresh_interval_minutes": "Infrequent refresh interval",
+                    "current_rate_refresh_interval_minutes": "Frequent refresh interval",
                     "include_gst": "Include GST",
                     "enable_plan_page": "Include plan data",
                     "enable_usage_page": "Include usage data",
