@@ -22,6 +22,7 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     plan_name: str
     amount_due_aud: float
     usage_today_kwh: float
+    usage_feedin_yesterday_kwh: float
     usage_period_start: str
     usage_period_end: str
     total_usage_kwh: float
@@ -52,4 +53,5 @@ class IntegrationBlueprintData:
     integration: Integration
     include_gst: bool
     refresh_interval_minutes: int
+    current_rate_refresh_interval_minutes: int
     enabled_pages: dict[str, bool]

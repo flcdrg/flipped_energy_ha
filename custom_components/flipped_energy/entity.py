@@ -8,11 +8,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import ATTRIBUTION
 from .coordinator import BlueprintDataUpdateCoordinator
 
+DEFAULT_DEVICE_NAME = "Flipped Energy"
+
 
 class IntegrationBlueprintEntity(CoordinatorEntity[BlueprintDataUpdateCoordinator]):
     """BlueprintEntity class."""
 
     _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = False
 
     def __init__(
         self,
@@ -29,4 +32,5 @@ class IntegrationBlueprintEntity(CoordinatorEntity[BlueprintDataUpdateCoordinato
                     coordinator.config_entry.entry_id,
                 ),
             },
+            name=DEFAULT_DEVICE_NAME,
         )

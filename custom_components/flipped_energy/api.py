@@ -34,6 +34,7 @@ from .const import (
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_DAILY_ROWS,
+    SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
     SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
@@ -145,18 +146,25 @@ class IntegrationBlueprintApiClient:
             enabled["usage"] = True
         self._enabled_pages = enabled
 
-    async def async_get_data(self) -> Any:
+    async def async_get_data(
+        self,
+        enabled_pages: dict[str, bool] | None = None,
+    ) -> Any:
         """Authenticate and fetch a normalized account snapshot from APIs."""
+        effective_pages = self._effective_enabled_pages(enabled_pages)
         await self._ensure_authenticated()
 
         try:
-            snapshot = await self._augment_snapshot_from_api({})
+            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
         except IntegrationBlueprintApiClientAuthenticationError:
             self._authenticated = False
             await self._ensure_authenticated(force=True)
-            snapshot = await self._augment_snapshot_from_api({})
+            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
 
-        missing_required_fields = self._missing_required_fields(snapshot)
+        missing_required_fields = self._missing_required_fields(
+            snapshot,
+            effective_pages,
+        )
         if missing_required_fields:
             raise IntegrationBlueprintApiClientExtractionError(
                 "Unable to extract required fields from API responses: "
@@ -169,6 +177,23 @@ class IntegrationBlueprintApiClient:
             tz=dt.UTC
         ).isoformat()
         return snapshot
+
+    def _effective_enabled_pages(
+        self,
+        enabled_pages: dict[str, bool] | None,
+    ) -> dict[str, bool]:
+        """Return a validated page selection for this fetch."""
+        if enabled_pages is None:
+            return dict(self._enabled_pages)
+
+        effective = {
+            "plan": bool(enabled_pages.get("plan", False)),
+            "usage": bool(enabled_pages.get("usage", False)),
+            "invoices": bool(enabled_pages.get("invoices", False)),
+        }
+        if not any(effective.values()):
+            effective["usage"] = True
+        return effective
 
     async def _ensure_authenticated(self, *, force: bool = False) -> None:
         """Ensure portal session is authenticated."""
@@ -226,10 +251,14 @@ class IntegrationBlueprintApiClient:
             msg = "Authenticated token is not valid"
             raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
-    def _missing_required_fields(self, snapshot: dict[str, Any]) -> list[str]:
+    def _missing_required_fields(
+        self,
+        snapshot: dict[str, Any],
+        enabled_pages: dict[str, bool],
+    ) -> list[str]:
         """Return the required snapshot keys that are currently missing."""
         required_fields: list[str] = []
-        if self._enabled_pages.get("usage", False):
+        if enabled_pages.get("usage", False):
             required_fields.extend(
                 [
                     SNAPSHOT_USAGE_TODAY_KWH,
@@ -237,9 +266,9 @@ class IntegrationBlueprintApiClient:
                     SNAPSHOT_TOTAL_FEEDIN_KWH,
                 ]
             )
-        if self._enabled_pages.get("invoices", False):
+        if enabled_pages.get("invoices", False):
             required_fields.append(SNAPSHOT_AMOUNT_DUE_AUD)
-        if self._enabled_pages.get("plan", False):
+        if enabled_pages.get("plan", False):
             required_fields.extend(
                 [
                     SNAPSHOT_PLAN_NAME,
@@ -251,10 +280,12 @@ class IntegrationBlueprintApiClient:
         return [key for key in required_fields if snapshot.get(key) is None]
 
     async def _augment_snapshot_from_api(
-        self, snapshot: dict[str, Any]
+        self,
+        snapshot: dict[str, Any],
+        enabled_pages: dict[str, bool],
     ) -> dict[str, Any]:
         """Fill missing snapshot fields from authenticated API responses."""
-        payloads_by_path = await self._fetch_api_snapshot_payloads()
+        payloads_by_path = await self._fetch_api_snapshot_payloads(enabled_pages)
         if not payloads_by_path:
             return snapshot
 
@@ -290,26 +321,31 @@ class IntegrationBlueprintApiClient:
 
         return snapshot
 
-    async def _fetch_api_snapshot_payloads(self) -> dict[str, Any]:
+    async def _fetch_api_snapshot_payloads(
+        self,
+        enabled_pages: dict[str, bool],
+    ) -> dict[str, Any]:
         """Fetch candidate API payloads that may contain account snapshot data."""
         payloads_by_path: dict[str, Any] = {}
-        for path in self._API_SNAPSHOT_PATHS:
-            try:
-                payload = await self._fetch_api_json(path)
-            except IntegrationBlueprintApiClientError:
-                continue
-            if payload is not None:
-                payloads_by_path[path] = payload
+        if enabled_pages.get("plan", False) or enabled_pages.get("invoices", False):
+            for path in self._API_SNAPSHOT_PATHS:
+                try:
+                    payload = await self._fetch_api_json(path)
+                except IntegrationBlueprintApiClientError:
+                    continue
+                if payload is not None:
+                    payloads_by_path[path] = payload
 
         # Hourly and daily usage are time-windowed in the web app; call them
         # explicitly with rolling windows to reliably obtain recent history.
-        hourly_rows = await self._fetch_usage_rows(self._API_USAGE_HOURLY_PATH)
-        if hourly_rows:
-            payloads_by_path[self._API_USAGE_HOURLY_PATH] = hourly_rows
+        if enabled_pages.get("usage", False):
+            hourly_rows = await self._fetch_usage_rows(self._API_USAGE_HOURLY_PATH)
+            if hourly_rows:
+                payloads_by_path[self._API_USAGE_HOURLY_PATH] = hourly_rows
 
-        usage_rows = await self._fetch_daily_usage_rows()
-        if usage_rows:
-            payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
+            usage_rows = await self._fetch_daily_usage_rows()
+            if usage_rows:
+                payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
 
         return payloads_by_path
 
@@ -725,8 +761,8 @@ class IntegrationBlueprintApiClient:
         if not isinstance(usage_rows, list):
             return {}
 
-        imports: list[tuple[dt.date, float]] = []
-        exports: list[tuple[dt.date, float]] = []
+        customer_import_usage_rows: list[tuple[dt.date, float]] = []
+        customer_feedin_rows: list[tuple[dt.date, float]] = []
         all_dates: list[dt.date] = []
 
         for row in usage_rows:
@@ -742,28 +778,39 @@ class IntegrationBlueprintApiClient:
                 continue
 
             all_dates.append(parsed_date)
-            if usage_type == "import":
-                imports.append((parsed_date, value))
-            elif usage_type == "export":
-                exports.append((parsed_date, abs(value)))
+            # Flipped usageType values are observed in retailer perspective:
+            # - API Export corresponds to customer grid import (consumption)
+            # - API Import corresponds to customer feed-in export
+            if usage_type == "export":
+                customer_import_usage_rows.append((parsed_date, abs(value)))
+            elif usage_type == "import":
+                customer_feedin_rows.append((parsed_date, abs(value)))
 
         if not all_dates:
             return {}
 
         metrics: dict[str, Any] = {
-            SNAPSHOT_TOTAL_USAGE_KWH: round(sum(v for _, v in imports), 6)
-            if imports
+            SNAPSHOT_TOTAL_USAGE_KWH: round(
+                sum(v for _, v in customer_import_usage_rows),
+                6,
+            )
+            if customer_import_usage_rows
             else 0.0,
-            SNAPSHOT_TOTAL_FEEDIN_KWH: round(sum(v for _, v in exports), 6)
-            if exports
+            SNAPSHOT_TOTAL_FEEDIN_KWH: round(sum(v for _, v in customer_feedin_rows), 6)
+            if customer_feedin_rows
             else 0.0,
             SNAPSHOT_BILLING_PERIOD_START: min(all_dates).isoformat(),
             SNAPSHOT_BILLING_PERIOD_END: max(all_dates).isoformat(),
         }
 
-        latest_date = max((d for d, _ in imports), default=max(all_dates))
-        usage_today = sum(v for d, v in imports if d == latest_date)
+        latest_date = max(
+            (d for d, _ in customer_import_usage_rows),
+            default=max(all_dates),
+        )
+        usage_today = sum(v for d, v in customer_import_usage_rows if d == latest_date)
+        feedin_yesterday = sum(v for d, v in customer_feedin_rows if d == latest_date)
         metrics[SNAPSHOT_USAGE_TODAY_KWH] = round(usage_today, 6)
+        metrics[SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH] = round(feedin_yesterday, 6)
         return metrics
 
     def _extract_hourly_usage_metrics(self, usage_rows: Any) -> dict[str, Any]:
@@ -771,7 +818,8 @@ class IntegrationBlueprintApiClient:
         if not isinstance(usage_rows, list):
             return {}
 
-        hourly_imports: list[tuple[dt.datetime, float]] = []
+        hourly_customer_import_usage_rows: list[tuple[dt.datetime, float]] = []
+        hourly_customer_feedin_rows: list[tuple[dt.datetime, float]] = []
         for row in usage_rows:
             if not isinstance(row, dict):
                 continue
@@ -783,16 +831,26 @@ class IntegrationBlueprintApiClient:
             parsed_stamp = self._parse_iso_datetime(stamp)
             if parsed_stamp is None:
                 continue
-            if usage_type == "import":
-                hourly_imports.append((parsed_stamp, value))
+            # Flipped usageType is retailer-perspective; API Export is customer import.
+            if usage_type == "export":
+                hourly_customer_import_usage_rows.append((parsed_stamp, abs(value)))
+            elif usage_type == "import":
+                hourly_customer_feedin_rows.append((parsed_stamp, abs(value)))
 
-        if not hourly_imports:
+        if not hourly_customer_import_usage_rows:
             return {}
 
-        latest_date = max(stamp.date() for stamp, _ in hourly_imports)
+        latest_date = max(
+            stamp.date() for stamp, _ in hourly_customer_import_usage_rows
+        )
         latest_period_rows = [
             (stamp, value)
-            for stamp, value in hourly_imports
+            for stamp, value in hourly_customer_import_usage_rows
+            if stamp.date() == latest_date
+        ]
+        latest_feedin_rows = [
+            (stamp, value)
+            for stamp, value in hourly_customer_feedin_rows
             if stamp.date() == latest_date
         ]
         if not latest_period_rows:
@@ -803,6 +861,10 @@ class IntegrationBlueprintApiClient:
         return {
             SNAPSHOT_USAGE_TODAY_KWH: round(
                 sum(value for _, value in latest_period_rows),
+                6,
+            ),
+            SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH: round(
+                sum(value for _, value in latest_feedin_rows),
                 6,
             ),
             SNAPSHOT_USAGE_PERIOD_START: period_start.isoformat(),

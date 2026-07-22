@@ -29,6 +29,7 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
                 "plan_name": "Flipped Saver",
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
+                "usage_feedin_yesterday_kwh": 1.2,
                 "usage_period_start": "2026-07-20T00:00:00",
                 "usage_period_end": "2026-07-20",
                 "total_usage_kwh": 321.0,
@@ -66,11 +67,15 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_usage")
+    sensor_state = hass.states.get("sensor.flipped_energy_usage_yesterday")
     assert sensor_state is not None
     assert sensor_state.state == "8.9"
     assert sensor_state.attributes.get("usage_period_start") == "2026-07-20T00:00:00"
     assert sensor_state.attributes.get("usage_period_end") == "2026-07-20"
+
+    feedin_yesterday_state = hass.states.get("sensor.flipped_energy_feed_in_yesterday")
+    assert feedin_yesterday_state is not None
+    assert feedin_yesterday_state.state == "1.2"
 
     usage_period_state = hass.states.get("sensor.flipped_energy_usage_period_end")
     assert usage_period_state is not None
@@ -142,7 +147,7 @@ async def test_unload_entry(hass, mock_config_entry) -> None:
     assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    sensor_state = hass.states.get("sensor.flipped_energy_usage")
+    sensor_state = hass.states.get("sensor.flipped_energy_usage_yesterday")
     assert sensor_state is None or sensor_state.state == "unavailable"
 
 
@@ -178,6 +183,7 @@ async def test_setup_entry_include_gst_option_adjusts_dynamic_values(
                 "plan_name": "Flipped Saver",
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
+                "usage_feedin_yesterday_kwh": 1.2,
                 "usage_period_start": "2026-07-20T00:00:00",
                 "usage_period_end": "2026-07-20",
                 "total_usage_kwh": 321.0,
@@ -245,6 +251,7 @@ async def test_current_import_tariff_shows_when_refresh_is_current(
                     "plan_name": "Flipped Saver",
                     "amount_due_aud": 10.0,
                     "usage_today_kwh": 1.0,
+                    "usage_feedin_yesterday_kwh": 0.5,
                     "usage_period_end": "2026-07-22",
                     "total_usage_kwh": 2.0,
                     "total_feedin_kwh": 0.5,
@@ -310,6 +317,7 @@ async def test_current_import_tariff_hides_when_boundary_is_stale(
                     "plan_name": "Flipped Saver",
                     "amount_due_aud": 10.0,
                     "usage_today_kwh": 1.0,
+                    "usage_feedin_yesterday_kwh": 0.5,
                     "usage_period_end": "2026-07-22",
                     "total_usage_kwh": 2.0,
                     "total_feedin_kwh": 0.5,
@@ -374,6 +382,7 @@ async def test_gst_toggle_refreshes_sensor_states_immediately(
                     "plan_name": "Flipped Saver",
                     "amount_due_aud": 123.45,
                     "usage_today_kwh": 8.9,
+                    "usage_feedin_yesterday_kwh": 1.2,
                     "usage_period_start": "2026-07-20T00:00:00",
                     "usage_period_end": "2026-07-20",
                     "total_usage_kwh": 321.0,
@@ -431,6 +440,7 @@ async def test_non_gst_option_changes_trigger_reload(hass, mock_config_entry) ->
                     "plan_name": "Flipped Saver",
                     "amount_due_aud": 123.45,
                     "usage_today_kwh": 8.9,
+                    "usage_feedin_yesterday_kwh": 1.2,
                     "usage_period_start": "2026-07-20T00:00:00",
                     "usage_period_end": "2026-07-20",
                     "total_usage_kwh": 321.0,

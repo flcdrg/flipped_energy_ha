@@ -17,16 +17,20 @@ from .api import (
     IntegrationBlueprintApiClientError,
 )
 from .const import (
+    CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     CONF_ENABLE_INVOICES_PAGE,
     CONF_ENABLE_PLAN_PAGE,
     CONF_ENABLE_USAGE_PAGE,
     CONF_INCLUDE_GST,
     CONF_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     DEFAULT_INCLUDE_GST,
     DEFAULT_REFRESH_INTERVAL_MINUTES,
     DOMAIN,
     LOGGER,
+    MAX_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     MAX_REFRESH_INTERVAL_MINUTES,
+    MIN_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     MIN_REFRESH_INTERVAL_MINUTES,
 )
 
@@ -149,6 +153,10 @@ class BlueprintOptionsFlow(config_entries.OptionsFlow):
                 CONF_REFRESH_INTERVAL_MINUTES,
                 DEFAULT_REFRESH_INTERVAL_MINUTES,
             ),
+            CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES: self._config_entry.options.get(
+                CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+                DEFAULT_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+            ),
             CONF_INCLUDE_GST: self._config_entry.options.get(
                 CONF_INCLUDE_GST,
                 DEFAULT_INCLUDE_GST,
@@ -187,6 +195,20 @@ class BlueprintOptionsFlow(config_entries.OptionsFlow):
                     selector.NumberSelectorConfig(
                         min=MIN_REFRESH_INTERVAL_MINUTES,
                         max=MAX_REFRESH_INTERVAL_MINUTES,
+                        mode=selector.NumberSelectorMode.BOX,
+                        step=1,
+                    )
+                ),
+                vol.Required(
+                    CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+                    default=defaults.get(
+                        CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+                        DEFAULT_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
+                        max=MAX_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
                         mode=selector.NumberSelectorMode.BOX,
                         step=1,
                     )

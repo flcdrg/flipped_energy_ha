@@ -34,11 +34,12 @@ Observed status:
 
 Integration mapping:
 
-- usage_today_kwh from Import rows for the latest completed day in the hourly window
-- usage_period_start from the earliest hourly import timestamp in that day
+- usage_today_kwh from Export rows for the latest completed day in the hourly window
+- usage_period_start from the earliest hourly export timestamp in that day
 - usage_period_end from the latest completed day date
 
 Notes:
 
 - Endpoint can return empty arrays for windows without data.
 - Integration queries multiple rolling windows and stops once data is found.
+- Observed payloads suggest `usageType` is retailer-perspective (`Export`=customer import, `Import`=customer feed-in).
