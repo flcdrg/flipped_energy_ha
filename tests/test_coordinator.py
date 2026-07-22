@@ -67,7 +67,15 @@ async def test_async_update_data_imports_usage_statistics(
         patch(
             "custom_components.flipped_energy.coordinator.async_add_external_statistics"
         ) as add_stats_mock,
+        patch(
+            "custom_components.flipped_energy.coordinator.get_instance"
+        ) as get_instance_mock,
     ):
+        # Mock the Recorder instance to return results from get_last_statistics
+        recorder_mock = AsyncMock()
+        recorder_mock.async_add_executor_job.return_value = {}
+        get_instance_mock.return_value = recorder_mock
+
         data = await coordinator._async_update_data()
 
     assert data["usage_today_kwh"] == 8.0

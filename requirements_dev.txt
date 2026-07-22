@@ -1,5 +1,0 @@
--r requirements_lint.txt
-colorlog==6.11.0
-homeassistant==2026.6.4
-home-assistant-frontend==20260624.6
-pytest-homeassistant-custom-component==0.13.346
