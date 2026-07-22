@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -152,3 +153,125 @@ async def test_setup_entry_not_ready_on_api_error(hass, mock_config_entry) -> No
 
     assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
     assert hass.states.get("sensor.flipped_energy_plan_name") is None
+
+
+async def test_current_import_tariff_shows_when_refresh_is_current(
+    hass, mock_config_entry
+) -> None:
+    """Test current import tariff sensor exposes value when data is fresh."""
+    mock_config_entry.add_to_hass(hass)
+    now = dt.datetime(2026, 7, 22, 18, 0, tzinfo=dt.UTC)
+
+    with (
+        patch(
+            "custom_components.flipped_energy.api.IntegrationBlueprintApiClient.async_get_data",
+            new=AsyncMock(
+                return_value={
+                    "plan_name": "Flipped Saver",
+                    "amount_due_aud": 10.0,
+                    "usage_today_kwh": 1.0,
+                    "usage_period_end": "2026-07-22",
+                    "total_usage_kwh": 2.0,
+                    "total_feedin_kwh": 0.5,
+                    "import_rate_cents_kwh": 20.0,
+                    "feedin_rate_cents_kwh": 2.0,
+                    "import_rate_blocks": [
+                        {
+                            "name": "Day",
+                            "start_minutes": 540,
+                            "end_minutes": 1020,
+                            "start_time": "09:00",
+                            "end_time": "17:00",
+                            "rate_cents_kwh": 9.93,
+                        },
+                        {
+                            "name": "Evening",
+                            "start_minutes": 1020,
+                            "end_minutes": 1260,
+                            "start_time": "17:00",
+                            "end_time": "21:00",
+                            "rate_cents_kwh": 57.62,
+                        },
+                    ],
+                    "feedin_rate_blocks": [],
+                    "last_successful_update": "2026-07-22T17:10:00+00:00",
+                    "auth_ok": True,
+                    "data_fresh": True,
+                }
+            ),
+        ),
+        patch(
+            "custom_components.flipped_energy.sensor.dt_util.now",
+            return_value=now,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.flipped_energy_current_import_tariff")
+    assert state is not None
+    assert state.state == "57.62"
+    assert state.attributes.get("is_stale") is False
+    assert state.attributes.get("valid_from") == "2026-07-22T17:00:00+00:00"
+    assert state.attributes.get("valid_to") == "2026-07-22T21:00:00+00:00"
+
+
+async def test_current_import_tariff_hides_when_boundary_is_stale(
+    hass, mock_config_entry
+) -> None:
+    """Test current import tariff goes unknown if not refreshed after changeover."""
+    mock_config_entry.add_to_hass(hass)
+    now = dt.datetime(2026, 7, 22, 18, 0, tzinfo=dt.UTC)
+
+    with (
+        patch(
+            "custom_components.flipped_energy.api.IntegrationBlueprintApiClient.async_get_data",
+            new=AsyncMock(
+                return_value={
+                    "plan_name": "Flipped Saver",
+                    "amount_due_aud": 10.0,
+                    "usage_today_kwh": 1.0,
+                    "usage_period_end": "2026-07-22",
+                    "total_usage_kwh": 2.0,
+                    "total_feedin_kwh": 0.5,
+                    "import_rate_cents_kwh": 20.0,
+                    "feedin_rate_cents_kwh": 2.0,
+                    "import_rate_blocks": [
+                        {
+                            "name": "Day",
+                            "start_minutes": 540,
+                            "end_minutes": 1020,
+                            "start_time": "09:00",
+                            "end_time": "17:00",
+                            "rate_cents_kwh": 9.93,
+                        },
+                        {
+                            "name": "Evening",
+                            "start_minutes": 1020,
+                            "end_minutes": 1260,
+                            "start_time": "17:00",
+                            "end_time": "21:00",
+                            "rate_cents_kwh": 57.62,
+                        },
+                    ],
+                    "feedin_rate_blocks": [],
+                    "last_successful_update": "2026-07-22T16:55:00+00:00",
+                    "auth_ok": True,
+                    "data_fresh": True,
+                }
+            ),
+        ),
+        patch(
+            "custom_components.flipped_energy.sensor.dt_util.now",
+            return_value=now,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.flipped_energy_current_import_tariff")
+    assert state is not None
+    assert state.state == "unknown"
+    assert state.attributes.get("is_stale") is True
+    assert state.attributes.get("valid_from") == "2026-07-22T17:00:00+00:00"
+    assert state.attributes.get("valid_to") == "2026-07-22T21:00:00+00:00"

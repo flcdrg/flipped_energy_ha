@@ -11,9 +11,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.util import dt as dt_util
 
 from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
+    SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS,
+    SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
     SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
     SNAPSHOT_FEEDIN_TOU_SCHEDULE,
@@ -88,6 +91,20 @@ ENTITY_DESCRIPTIONS = (
         key=SNAPSHOT_FEEDIN_RATE_CENTS,
         name="Flipped Energy Feed-In Rate",
         icon="mdi:solar-power-variant",
+        native_unit_of_measurement="c/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
+        name="Flipped Energy Current Import Tariff",
+        icon="mdi:flash",
+        native_unit_of_measurement="c/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS,
+        name="Flipped Energy Current Feed-In Tariff",
+        icon="mdi:solar-power",
         native_unit_of_measurement="c/kWh",
         state_class=SensorStateClass.MEASUREMENT,
     ),
@@ -168,6 +185,18 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         value = self.coordinator.data.get(key)
         result: str | int | float | dt.date | dt.datetime | None = value
 
+        if key == SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS:
+            active = self._active_tariff_context(SNAPSHOT_IMPORT_RATE_BLOCKS)
+            if active and not active["is_stale"]:
+                return active["rate_cents_kwh"]
+            return None
+
+        if key == SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS:
+            active = self._active_tariff_context(SNAPSHOT_FEEDIN_RATE_BLOCKS)
+            if active and not active["is_stale"]:
+                return active["rate_cents_kwh"]
+            return None
+
         if value is None:
             # Schedule sensors are derived from TOU block attributes.
             if key == SNAPSHOT_IMPORT_TOU_SCHEDULE:
@@ -214,6 +243,8 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
             SNAPSHOT_FEEDIN_RATE_CENTS: (SNAPSHOT_FEEDIN_RATE_BLOCKS, True),
             SNAPSHOT_IMPORT_RATE_BLOCKS: (SNAPSHOT_IMPORT_RATE_BLOCKS, False),
             SNAPSHOT_FEEDIN_RATE_BLOCKS: (SNAPSHOT_FEEDIN_RATE_BLOCKS, False),
+            SNAPSHOT_IMPORT_TOU_SCHEDULE: (SNAPSHOT_IMPORT_RATE_BLOCKS, False),
+            SNAPSHOT_FEEDIN_TOU_SCHEDULE: (SNAPSHOT_FEEDIN_RATE_BLOCKS, False),
         }
         block_config = block_attribute_map.get(key)
         if block_config:
@@ -229,17 +260,129 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
             if incl_gst is not None:
                 attributes[SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS] = incl_gst
 
-        if key == SNAPSHOT_IMPORT_TOU_SCHEDULE:
-            rate_blocks = self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
-            if isinstance(rate_blocks, list):
-                attributes[SNAPSHOT_IMPORT_RATE_BLOCKS] = rate_blocks
-
-        if key == SNAPSHOT_FEEDIN_TOU_SCHEDULE:
-            rate_blocks = self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
-            if isinstance(rate_blocks, list):
-                attributes[SNAPSHOT_FEEDIN_RATE_BLOCKS] = rate_blocks
+        current_tariff_map: dict[str, str] = {
+            SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS: SNAPSHOT_IMPORT_RATE_BLOCKS,
+            SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS: SNAPSHOT_FEEDIN_RATE_BLOCKS,
+        }
+        current_block_key = current_tariff_map.get(key)
+        if current_block_key:
+            active = self._active_tariff_context(current_block_key)
+            if active:
+                attributes.update(active)
 
         return attributes or None
+
+    def _active_tariff_context(self, block_key: str) -> dict[str, Any] | None:
+        """Return active tariff block context including validity and staleness."""
+        blocks = self.coordinator.data.get(block_key)
+        if not isinstance(blocks, list) or not blocks:
+            return None
+
+        now = dt_util.now()
+        minute_now = (now.hour * 60) + now.minute
+        active_block = self._find_active_block(blocks, minute_now)
+        if active_block is None:
+            return None
+
+        valid_from, valid_to = self._resolve_block_validity_window(now, active_block)
+        last_update = self._parse_last_successful_update()
+        is_stale = (
+            last_update is None
+            or last_update < valid_from
+            or (now >= valid_to and last_update < valid_to)
+        )
+
+        context: dict[str, Any] = {
+            "valid_from": valid_from.isoformat(),
+            "valid_to": valid_to.isoformat(),
+            "is_stale": is_stale,
+            "last_successful_update": (
+                last_update.isoformat() if last_update is not None else None
+            ),
+            "rate_cents_kwh": active_block.get("rate_cents_kwh"),
+            "start_time": active_block.get("start_time"),
+            "end_time": active_block.get("end_time"),
+        }
+        if "name" in active_block:
+            context["name"] = active_block.get("name")
+        return context
+
+    def _find_active_block(
+        self,
+        blocks: list[Any],
+        minute_now: int,
+    ) -> dict[str, Any] | None:
+        """Return the first TOU block active at the provided minute-of-day."""
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            start = block.get("start_minutes")
+            end = block.get("end_minutes")
+            if not isinstance(start, int) or not isinstance(end, int):
+                continue
+            if self._is_minute_in_block(minute_now, start, end):
+                return block
+        return None
+
+    def _is_minute_in_block(self, minute_now: int, start: int, end: int) -> bool:
+        """Return True when the current minute is inside the TOU block window."""
+        if start == end:
+            return True
+        if start < end:
+            return start <= minute_now < end
+        return minute_now >= start or minute_now < end
+
+    def _resolve_block_validity_window(
+        self,
+        now: dt.datetime,
+        block: dict[str, Any],
+    ) -> tuple[dt.datetime, dt.datetime]:
+        """Resolve active block validity window as tz-aware datetimes."""
+        start = int(block["start_minutes"])
+        end = int(block["end_minutes"])
+        day = now.date()
+
+        if start == end:
+            start_day = day
+            end_day = day + dt.timedelta(days=1)
+        elif start < end:
+            start_day = day
+            end_day = day
+        elif (now.hour * 60 + now.minute) >= start:
+            start_day = day
+            end_day = day + dt.timedelta(days=1)
+        else:
+            start_day = day - dt.timedelta(days=1)
+            end_day = day
+
+        valid_from = dt.datetime.combine(
+            start_day,
+            dt.time(hour=start // 60, minute=start % 60),
+            tzinfo=now.tzinfo,
+        )
+        valid_to = dt.datetime.combine(
+            end_day,
+            dt.time(hour=end // 60, minute=end % 60),
+            tzinfo=now.tzinfo,
+        )
+        if valid_to <= valid_from:
+            valid_to = valid_to + dt.timedelta(days=1)
+
+        return valid_from, valid_to
+
+    def _parse_last_successful_update(self) -> dt.datetime | None:
+        """Parse last successful snapshot update timestamp as local tz-aware dt."""
+        raw = self.coordinator.data.get(SNAPSHOT_LAST_SUCCESSFUL_UPDATE)
+        if not isinstance(raw, str):
+            return None
+        normalized = raw.replace("Z", "+00:00")
+        try:
+            parsed = dt.datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.UTC)
+        return parsed.astimezone(dt_util.now().tzinfo)
 
     def _format_tou_schedule(self, value: Any) -> str | None:
         """Return a compact human-readable TOU schedule from rate blocks."""
