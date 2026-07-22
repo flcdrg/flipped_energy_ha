@@ -120,6 +120,8 @@ class IntegrationBlueprintApiClient:
     )
     _RATE_DOLLARS_THRESHOLD = 2
     _CURRENCY_DOLLARS_THRESHOLD = 20
+    _MINUTES_PER_HOUR = 60
+    _TIME_COMPONENTS_HHMM = 2
 
     def __init__(
         self,
@@ -609,9 +611,9 @@ class IntegrationBlueprintApiClient:
         charge_per_kwh: float,
     ) -> dict[str, Any] | None:
         """Build a normalized time-of-day rate block for sensor attributes."""
-        start = unit.get("timeOfDayStartMinutes")
-        end = unit.get("timeOfDayEndMinutes")
-        if not isinstance(start, int) or not isinstance(end, int):
+        start = self._extract_time_of_day_minutes(unit, is_start=True)
+        end = self._extract_time_of_day_minutes(unit, is_start=False)
+        if start is None or end is None:
             return None
 
         block: dict[str, Any] = {
@@ -625,6 +627,62 @@ class IntegrationBlueprintApiClient:
         if period_name:
             block["name"] = period_name
         return block
+
+    def _extract_time_of_day_minutes(
+        self,
+        unit: dict[str, Any],
+        *,
+        is_start: bool,
+    ) -> int | None:
+        """Extract time-of-day minute offset from multiple possible API keys."""
+        keys = (
+            ("timeOfDayStartMinutes", "timeOfDayEndMinutes")
+            if is_start
+            else ("timeOfDayEndMinutes", "timeOfDayStartMinutes")
+        )
+        alt_keys = (
+            ("timeOfDayStart", "timeOfDayEnd")
+            if is_start
+            else ("timeOfDayEnd", "timeOfDayStart")
+        )
+
+        for key in keys + alt_keys:
+            candidate = unit.get(key)
+            minutes = self._coerce_minutes_value(candidate)
+            if minutes is not None:
+                return minutes
+
+        return None
+
+    def _coerce_minutes_value(self, value: Any) -> int | None:
+        """Convert int/float or HH:MM strings to minutes since midnight."""
+        if isinstance(value, bool):
+            return None
+
+        normalized: int | None = None
+        if isinstance(value, int):
+            normalized = value
+        elif isinstance(value, float):
+            normalized = int(value)
+        elif isinstance(value, str):
+            text = value.strip()
+            if text:
+                if text.isdigit():
+                    normalized = int(text)
+                else:
+                    parts = text.split(":")
+                    if len(parts) == self._TIME_COMPONENTS_HHMM:
+                        with suppress(ValueError):
+                            hours = int(parts[0])
+                            minutes = int(parts[1])
+                            if 0 <= minutes < self._MINUTES_PER_HOUR and hours >= 0:
+                                normalized = (
+                                    (hours % 24) * self._MINUTES_PER_HOUR
+                                ) + minutes
+
+        if normalized is None:
+            return None
+        return normalized % (24 * self._MINUTES_PER_HOUR)
 
     def _minutes_to_hhmm(self, total_minutes: int) -> str:
         """Convert minutes since midnight into HH:MM text."""

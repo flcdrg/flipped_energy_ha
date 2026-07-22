@@ -16,8 +16,10 @@ from .const import (
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
+    SNAPSHOT_FEEDIN_TOU_SCHEDULE,
     SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
+    SNAPSHOT_IMPORT_TOU_SCHEDULE,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
@@ -90,6 +92,26 @@ ENTITY_DESCRIPTIONS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
+        key=SNAPSHOT_IMPORT_RATE_BLOCKS,
+        name="Flipped Energy Import TOU Blocks",
+        icon="mdi:clock-time-eight-outline",
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_FEEDIN_RATE_BLOCKS,
+        name="Flipped Energy Feed-In TOU Blocks",
+        icon="mdi:clock-time-eight-outline",
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_IMPORT_TOU_SCHEDULE,
+        name="Flipped Energy Import TOU Schedule",
+        icon="mdi:table-clock",
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_FEEDIN_TOU_SCHEDULE,
+        name="Flipped Energy Feed-In TOU Schedule",
+        icon="mdi:table-clock",
+    ),
+    SensorEntityDescription(
         key=SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
         name="Flipped Energy Supply Charge Daily",
         icon="mdi:transmission-tower",
@@ -140,20 +162,38 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         self.entity_description = entity_description
 
     @property
-    def native_value(self) -> str | float | dt.date | dt.datetime | None:
+    def native_value(self) -> str | int | float | dt.date | dt.datetime | None:
         """Return the native value of the sensor."""
-        value = self.coordinator.data.get(self.entity_description.key)
+        key = self.entity_description.key
+        value = self.coordinator.data.get(key)
+        result: str | int | float | dt.date | dt.datetime | None = value
+
         if value is None:
-            return None
+            # Schedule sensors are derived from TOU block attributes.
+            if key == SNAPSHOT_IMPORT_TOU_SCHEDULE:
+                result = self._format_tou_schedule(
+                    self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
+                )
+            elif key == SNAPSHOT_FEEDIN_TOU_SCHEDULE:
+                result = self._format_tou_schedule(
+                    self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
+                )
+            else:
+                result = None
+        elif key in (
+            SNAPSHOT_IMPORT_RATE_BLOCKS,
+            SNAPSHOT_FEEDIN_RATE_BLOCKS,
+        ) and isinstance(value, list):
+            result = len(value)
+        else:
+            device_class = self.entity_description.device_class
+            if device_class == SensorDeviceClass.TIMESTAMP and isinstance(value, str):
+                normalized = value.replace("Z", "+00:00")
+                result = dt.datetime.fromisoformat(normalized)
+            elif device_class == SensorDeviceClass.DATE and isinstance(value, str):
+                result = dt.date.fromisoformat(value[:10])
 
-        device_class = self.entity_description.device_class
-        if device_class == SensorDeviceClass.TIMESTAMP and isinstance(value, str):
-            normalized = value.replace("Z", "+00:00")
-            return dt.datetime.fromisoformat(normalized)
-        if device_class == SensorDeviceClass.DATE and isinstance(value, str):
-            return dt.date.fromisoformat(value[:10])
-
-        return value
+        return result
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -169,15 +209,18 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
             if period_end is not None:
                 attributes[SNAPSHOT_USAGE_PERIOD_END] = str(period_end)
 
-        if key == SNAPSHOT_IMPORT_RATE_CENTS:
-            rate_blocks = self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
-            if isinstance(rate_blocks, list) and rate_blocks:
-                attributes[SNAPSHOT_IMPORT_RATE_BLOCKS] = rate_blocks
-
-        if key == SNAPSHOT_FEEDIN_RATE_CENTS:
-            rate_blocks = self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
-            if isinstance(rate_blocks, list) and rate_blocks:
-                attributes[SNAPSHOT_FEEDIN_RATE_BLOCKS] = rate_blocks
+        block_attribute_map: dict[str, tuple[str, bool]] = {
+            SNAPSHOT_IMPORT_RATE_CENTS: (SNAPSHOT_IMPORT_RATE_BLOCKS, True),
+            SNAPSHOT_FEEDIN_RATE_CENTS: (SNAPSHOT_FEEDIN_RATE_BLOCKS, True),
+            SNAPSHOT_IMPORT_RATE_BLOCKS: (SNAPSHOT_IMPORT_RATE_BLOCKS, False),
+            SNAPSHOT_FEEDIN_RATE_BLOCKS: (SNAPSHOT_FEEDIN_RATE_BLOCKS, False),
+        }
+        block_config = block_attribute_map.get(key)
+        if block_config:
+            block_key, require_non_empty = block_config
+            rate_blocks = self.coordinator.data.get(block_key)
+            if isinstance(rate_blocks, list) and (rate_blocks or not require_non_empty):
+                attributes[block_key] = rate_blocks
 
         if key == SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS:
             incl_gst = self.coordinator.data.get(
@@ -186,4 +229,43 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
             if incl_gst is not None:
                 attributes[SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS] = incl_gst
 
+        if key == SNAPSHOT_IMPORT_TOU_SCHEDULE:
+            rate_blocks = self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
+            if isinstance(rate_blocks, list):
+                attributes[SNAPSHOT_IMPORT_RATE_BLOCKS] = rate_blocks
+
+        if key == SNAPSHOT_FEEDIN_TOU_SCHEDULE:
+            rate_blocks = self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
+            if isinstance(rate_blocks, list):
+                attributes[SNAPSHOT_FEEDIN_RATE_BLOCKS] = rate_blocks
+
         return attributes or None
+
+    def _format_tou_schedule(self, value: Any) -> str | None:
+        """Return a compact human-readable TOU schedule from rate blocks."""
+        if not isinstance(value, list) or not value:
+            return None
+
+        segments: list[str] = []
+        for block in value:
+            if not isinstance(block, dict):
+                continue
+            name = block.get("name")
+            start_time = block.get("start_time")
+            end_time = block.get("end_time")
+            rate = block.get("rate_cents_kwh")
+
+            if not isinstance(start_time, str) or not isinstance(end_time, str):
+                continue
+
+            prefix = f"{name} " if isinstance(name, str) and name.strip() else ""
+            if isinstance(rate, (int, float)):
+                segments.append(
+                    f"{prefix}{start_time}-{end_time} @ {float(rate):.4f} c/kWh"
+                )
+            else:
+                segments.append(f"{prefix}{start_time}-{end_time}")
+
+        if not segments:
+            return None
+        return "; ".join(segments)

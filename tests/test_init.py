@@ -86,6 +86,24 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
     assert import_rate_state is not None
     assert len(import_rate_state.attributes.get("import_rate_blocks", [])) == 1
 
+    import_tou_state = hass.states.get("sensor.flipped_energy_import_tou_blocks")
+    assert import_tou_state is not None
+    assert import_tou_state.state == "1"
+
+    feedin_tou_state = hass.states.get("sensor.flipped_energy_feed_in_tou_blocks")
+    assert feedin_tou_state is not None
+    assert feedin_tou_state.state == "1"
+
+    import_schedule_state = hass.states.get("sensor.flipped_energy_import_tou_schedule")
+    assert import_schedule_state is not None
+    assert "09:00-17:00" in import_schedule_state.state
+
+    feedin_schedule_state = hass.states.get(
+        "sensor.flipped_energy_feed_in_tou_schedule"
+    )
+    assert feedin_schedule_state is not None
+    assert "00:00-00:00" in feedin_schedule_state.state
+
     supply_state = hass.states.get("sensor.flipped_energy_supply_charge_daily")
     assert supply_state is not None
     assert supply_state.state == "110.0"
