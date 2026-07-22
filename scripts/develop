@@ -5,7 +5,12 @@ set -e
 cd "$(dirname "$0")/.."
 
 # Bootstrap dependencies when running develop directly.
-if ! python3 - <<'PY' >/dev/null 2>&1
+python_executable="python3"
+if [[ -x "${PWD}/.venv/bin/python" ]]; then
+    python_executable="${PWD}/.venv/bin/python"
+fi
+
+if ! "${python_executable}" - <<'PY' >/dev/null 2>&1
 import homeassistant  # noqa: F401
 import hass_frontend  # noqa: F401
 PY
@@ -17,7 +22,7 @@ fi
 # Create config dir if not present
 if [[ ! -d "${PWD}/config" ]]; then
     mkdir -p "${PWD}/config"
-    hass --config "${PWD}/config" --script ensure_config
+    .venv/bin/hass --config "${PWD}/config" --script ensure_config
 fi
 
 # Set the path to custom_components
@@ -27,4 +32,4 @@ fi
 export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
 
 # Start Home Assistant
-hass --config "${PWD}/config" --debug
+.venv/bin/hass --config "${PWD}/config" --debug
