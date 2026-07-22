@@ -14,6 +14,8 @@ from homeassistant.components.sensor import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_INCLUDE_GST,
+    DEFAULT_INCLUDE_GST,
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS,
     SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
@@ -136,13 +138,6 @@ ENTITY_DESCRIPTIONS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key=SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
-        name="Flipped Energy Supply Charge Daily (Incl GST)",
-        icon="mdi:transmission-tower",
-        native_unit_of_measurement="c/day",
-        state_class=SensorStateClass.MEASUREMENT,
-    ),
-    SensorEntityDescription(
         key=SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
         name="Flipped Energy Last Successful Update",
         icon="mdi:clock-check",
@@ -169,6 +164,8 @@ async def async_setup_entry(
 class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
     """flipped_energy Sensor class."""
 
+    _DEFAULT_GST_MULTIPLIER = 1.1
+
     def __init__(
         self,
         coordinator: BlueprintDataUpdateCoordinator,
@@ -183,46 +180,64 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         """Return the native value of the sensor."""
         key = self.entity_description.key
         value = self.coordinator.data.get(key)
-        result: str | int | float | dt.date | dt.datetime | None = value
+        current_tariff_map: dict[str, str] = {
+            SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS: SNAPSHOT_IMPORT_RATE_BLOCKS,
+            SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS: SNAPSHOT_FEEDIN_RATE_BLOCKS,
+        }
+        block_key = current_tariff_map.get(key)
+        if block_key is not None:
+            return self._current_tariff_native_value(key, block_key)
 
-        if key == SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS:
-            active = self._active_tariff_context(SNAPSHOT_IMPORT_RATE_BLOCKS)
-            if active and not active["is_stale"]:
-                return active["rate_cents_kwh"]
-            return None
+        if key == SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS:
+            return self._resolve_supply_charge_value_cents()
 
-        if key == SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS:
-            active = self._active_tariff_context(SNAPSHOT_FEEDIN_RATE_BLOCKS)
-            if active and not active["is_stale"]:
-                return active["rate_cents_kwh"]
-            return None
+        schedule_block_map: dict[str, str] = {
+            SNAPSHOT_IMPORT_TOU_SCHEDULE: SNAPSHOT_IMPORT_RATE_BLOCKS,
+            SNAPSHOT_FEEDIN_TOU_SCHEDULE: SNAPSHOT_FEEDIN_RATE_BLOCKS,
+        }
+        schedule_key = schedule_block_map.get(key)
+        if schedule_key is not None and value is None:
+            return self._format_tou_schedule(
+                self._adjusted_rate_blocks(key, schedule_key)
+            )
 
-        if value is None:
-            # Schedule sensors are derived from TOU block attributes.
-            if key == SNAPSHOT_IMPORT_TOU_SCHEDULE:
-                result = self._format_tou_schedule(
-                    self.coordinator.data.get(SNAPSHOT_IMPORT_RATE_BLOCKS)
-                )
-            elif key == SNAPSHOT_FEEDIN_TOU_SCHEDULE:
-                result = self._format_tou_schedule(
-                    self.coordinator.data.get(SNAPSHOT_FEEDIN_RATE_BLOCKS)
-                )
-            else:
-                result = None
-        elif key in (
+        if key in (
             SNAPSHOT_IMPORT_RATE_BLOCKS,
             SNAPSHOT_FEEDIN_RATE_BLOCKS,
         ) and isinstance(value, list):
-            result = len(value)
-        else:
-            device_class = self.entity_description.device_class
-            if device_class == SensorDeviceClass.TIMESTAMP and isinstance(value, str):
-                normalized = value.replace("Z", "+00:00")
-                result = dt.datetime.fromisoformat(normalized)
-            elif device_class == SensorDeviceClass.DATE and isinstance(value, str):
-                result = dt.date.fromisoformat(value[:10])
+            return len(value)
 
-        return result
+        if key in (SNAPSHOT_IMPORT_RATE_CENTS, SNAPSHOT_FEEDIN_RATE_CENTS):
+            adjusted = self._adjust_rate_value(key, value)
+            if adjusted is not None:
+                return adjusted
+
+        return self._coerce_native_value_by_device_class(value)
+
+    def _current_tariff_native_value(self, key: str, block_key: str) -> float | None:
+        """Return current tariff rate for the active non-stale block."""
+        active = self._active_tariff_context(key, block_key)
+        if active and not active["is_stale"]:
+            rate = active.get("rate_cents_kwh")
+            if isinstance(rate, (int, float)):
+                return float(rate)
+        return None
+
+    def _coerce_native_value_by_device_class(
+        self,
+        value: Any,
+    ) -> str | int | float | dt.date | dt.datetime | None:
+        """Convert native values for DATE/TIMESTAMP sensors when needed."""
+        if value is None:
+            return None
+
+        device_class = self.entity_description.device_class
+        if device_class == SensorDeviceClass.TIMESTAMP and isinstance(value, str):
+            normalized = value.replace("Z", "+00:00")
+            return dt.datetime.fromisoformat(normalized)
+        if device_class == SensorDeviceClass.DATE and isinstance(value, str):
+            return dt.date.fromisoformat(value[:10])
+        return value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -249,7 +264,7 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         block_config = block_attribute_map.get(key)
         if block_config:
             block_key, require_non_empty = block_config
-            rate_blocks = self.coordinator.data.get(block_key)
+            rate_blocks = self._adjusted_rate_blocks(key, block_key)
             if isinstance(rate_blocks, list) and (rate_blocks or not require_non_empty):
                 attributes[block_key] = rate_blocks
 
@@ -260,19 +275,22 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
             if incl_gst is not None:
                 attributes[SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS] = incl_gst
 
+        if key in self._dynamic_gst_sensor_keys():
+            attributes["gst_included"] = self._include_gst_enabled()
+
         current_tariff_map: dict[str, str] = {
             SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS: SNAPSHOT_IMPORT_RATE_BLOCKS,
             SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS: SNAPSHOT_FEEDIN_RATE_BLOCKS,
         }
         current_block_key = current_tariff_map.get(key)
         if current_block_key:
-            active = self._active_tariff_context(current_block_key)
+            active = self._active_tariff_context(key, current_block_key)
             if active:
                 attributes.update(active)
 
         return attributes or None
 
-    def _active_tariff_context(self, block_key: str) -> dict[str, Any] | None:
+    def _active_tariff_context(self, key: str, block_key: str) -> dict[str, Any] | None:
         """Return active tariff block context including validity and staleness."""
         blocks = self.coordinator.data.get(block_key)
         if not isinstance(blocks, list) or not blocks:
@@ -305,7 +323,103 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
         }
         if "name" in active_block:
             context["name"] = active_block.get("name")
+
+        rate = context.get("rate_cents_kwh")
+        if isinstance(rate, (int, float)) and self._key_uses_dynamic_gst(key):
+            context["rate_cents_kwh"] = self._apply_gst_if_enabled(float(rate))
         return context
+
+    def _include_gst_enabled(self) -> bool:
+        """Return True when GST should be included in dynamic tariff values."""
+        return bool(
+            self.coordinator.config_entry.options.get(
+                CONF_INCLUDE_GST,
+                DEFAULT_INCLUDE_GST,
+            )
+        )
+
+    def _dynamic_gst_sensor_keys(self) -> set[str]:
+        """Return sensor keys with values affected by Include GST option."""
+        return {
+            SNAPSHOT_IMPORT_RATE_CENTS,
+            SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
+            SNAPSHOT_IMPORT_RATE_BLOCKS,
+            SNAPSHOT_IMPORT_TOU_SCHEDULE,
+            SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
+        }
+
+    def _key_uses_dynamic_gst(self, key: str) -> bool:
+        """Return True when Include GST should transform this sensor key."""
+        return key in self._dynamic_gst_sensor_keys()
+
+    def _adjust_rate_value(self, key: str, value: Any) -> float | None:
+        """Return rate value adjusted for Include GST option."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        if not self._key_uses_dynamic_gst(key):
+            return float(value)
+        return self._apply_gst_if_enabled(float(value))
+
+    def _apply_gst_if_enabled(self, value: float) -> float:
+        """Apply GST multiplier when Include GST option is enabled."""
+        if not self._include_gst_enabled():
+            return value
+        return round(value * self._gst_multiplier(), 6)
+
+    def _gst_multiplier(self) -> float:
+        """Derive GST multiplier from supply charge snapshots, fallback to default."""
+        excl_raw = self.coordinator.data.get(SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS)
+        incl_raw = self.coordinator.data.get(
+            SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS
+        )
+        if isinstance(excl_raw, (int, float)) and isinstance(incl_raw, (int, float)):
+            excl = float(excl_raw)
+            incl = float(incl_raw)
+            if excl > 0 and incl > 0:
+                return incl / excl
+        return self._DEFAULT_GST_MULTIPLIER
+
+    def _resolve_supply_charge_value_cents(self) -> float | None:
+        """Return supply charge value based on Include GST option."""
+        excl_raw = self.coordinator.data.get(SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS)
+        incl_raw = self.coordinator.data.get(
+            SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS
+        )
+
+        excl = float(excl_raw) if isinstance(excl_raw, (int, float)) else None
+        incl = float(incl_raw) if isinstance(incl_raw, (int, float)) else None
+
+        if self._include_gst_enabled():
+            if incl is not None:
+                return round(incl, 6)
+            if excl is not None:
+                return round(excl * self._gst_multiplier(), 6)
+            return None
+
+        if excl is not None:
+            return round(excl, 6)
+        return round(incl, 6) if incl is not None else None
+
+    def _adjusted_rate_blocks(
+        self,
+        key: str,
+        block_key: str,
+    ) -> list[dict[str, Any]] | None:
+        """Return rate blocks with rate values adjusted for Include GST option."""
+        raw_blocks = self.coordinator.data.get(block_key)
+        if not isinstance(raw_blocks, list):
+            return None
+
+        adjusted: list[dict[str, Any]] = []
+        for block in raw_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_copy = dict(block)
+            rate = block_copy.get("rate_cents_kwh")
+            if isinstance(rate, (int, float)) and self._key_uses_dynamic_gst(key):
+                block_copy["rate_cents_kwh"] = self._apply_gst_if_enabled(float(rate))
+            adjusted.append(block_copy)
+        return adjusted
 
     def _find_active_block(
         self,

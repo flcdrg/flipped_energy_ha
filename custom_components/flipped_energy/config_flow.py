@@ -20,7 +20,9 @@ from .const import (
     CONF_ENABLE_INVOICES_PAGE,
     CONF_ENABLE_PLAN_PAGE,
     CONF_ENABLE_USAGE_PAGE,
+    CONF_INCLUDE_GST,
     CONF_REFRESH_INTERVAL_MINUTES,
+    DEFAULT_INCLUDE_GST,
     DEFAULT_REFRESH_INTERVAL_MINUTES,
     DOMAIN,
     LOGGER,
@@ -147,6 +149,10 @@ class BlueprintOptionsFlow(config_entries.OptionsFlow):
                 CONF_REFRESH_INTERVAL_MINUTES,
                 DEFAULT_REFRESH_INTERVAL_MINUTES,
             ),
+            CONF_INCLUDE_GST: self._config_entry.options.get(
+                CONF_INCLUDE_GST,
+                DEFAULT_INCLUDE_GST,
+            ),
             CONF_ENABLE_PLAN_PAGE: self._config_entry.options.get(
                 CONF_ENABLE_PLAN_PAGE,
                 True,
@@ -185,6 +191,10 @@ class BlueprintOptionsFlow(config_entries.OptionsFlow):
                         step=1,
                     )
                 ),
+                vol.Required(
+                    CONF_INCLUDE_GST,
+                    default=defaults.get(CONF_INCLUDE_GST, DEFAULT_INCLUDE_GST),
+                ): selector.BooleanSelector(),
                 vol.Required(
                     CONF_ENABLE_PLAN_PAGE,
                     default=defaults.get(CONF_ENABLE_PLAN_PAGE, True),

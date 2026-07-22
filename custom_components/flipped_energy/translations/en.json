@@ -23,6 +23,7 @@
             "init": {
                 "data": {
                     "refresh_interval_minutes": "Refresh interval (minutes)",
+                    "include_gst": "Include GST",
                     "enable_plan_page": "Include plan data",
                     "enable_usage_page": "Include usage data",
                     "enable_invoices_page": "Include invoice data"

@@ -50,3 +50,6 @@ class IntegrationBlueprintData:
     client: IntegrationBlueprintApiClient
     coordinator: BlueprintDataUpdateCoordinator
     integration: Integration
+    include_gst: bool
+    refresh_interval_minutes: int
+    enabled_pages: dict[str, bool]
