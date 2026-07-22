@@ -8,7 +8,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import ATTRIBUTION
 from .coordinator import BlueprintDataUpdateCoordinator
 
-
 DEFAULT_DEVICE_NAME = "Flipped Energy"
 
 
