@@ -13,3 +13,24 @@ fi
 
 # Sync the project environment and lockfile with the dev dependency group.
 uv sync --group dev
+
+# Install the local commit guard directly into Git's default hooks directory.
+mkdir -p .git/hooks
+cat > .git/hooks/pre-commit <<'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+current_branch=$(git branch --show-current)
+
+if [[ -z "$current_branch" ]]; then
+    echo "Refusing to commit from a detached HEAD. Switch to a feature branch first."
+    exit 1
+fi
+
+if [[ "$current_branch" == "main" ]]; then
+    echo "Refusing to commit on main. Switch to a feature branch first."
+    exit 1
+fi
+EOF
+chmod +x .git/hooks/pre-commit
