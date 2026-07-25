@@ -18,7 +18,7 @@ from custom_components.flipped_energy.const import (
 pytestmark = pytest.mark.asyncio
 
 
-async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
+async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:  # noqa: PLR0915
     """Test that setting up an entry creates integration entities."""
     mock_config_entry.add_to_hass(hass)
 
@@ -95,9 +95,7 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
     assert usage_monthly_state is not None
     assert usage_monthly_state.state == "180.2"
 
-    feedin_monthly_state = hass.states.get(
-        "sensor.flipped_energy_feed_in_this_month"
-    )
+    feedin_monthly_state = hass.states.get("sensor.flipped_energy_feed_in_this_month")
     assert feedin_monthly_state is not None
     assert feedin_monthly_state.state == "28.4"
 

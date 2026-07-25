@@ -34,15 +34,15 @@ from .const import (
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_DAILY_ROWS,
-    SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
-    SNAPSHOT_USAGE_HOURLY_ROWS,
-    SNAPSHOT_USAGE_PERIOD_END,
-    SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH,
     SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH,
+    SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
+    SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_MONTHLY_KWH,
-    SNAPSHOT_USAGE_WEEKLY_KWH,
+    SNAPSHOT_USAGE_PERIOD_END,
+    SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_TODAY_KWH,
+    SNAPSHOT_USAGE_WEEKLY_KWH,
 )
 
 
@@ -453,17 +453,13 @@ class IntegrationBlueprintApiClient:
         weekly_metrics = self._extract_usage_totals(weekly_rows)
         if weekly_metrics is not None:
             snapshot[SNAPSHOT_USAGE_WEEKLY_KWH] = weekly_metrics["usage_kwh"]
-            snapshot[SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH] = weekly_metrics[
-                "feedin_kwh"
-            ]
+            snapshot[SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH] = weekly_metrics["feedin_kwh"]
 
         monthly_rows = payloads_by_path.get(self._API_USAGE_MONTHLY_PATH)
         monthly_metrics = self._extract_usage_totals(monthly_rows)
         if monthly_metrics is not None:
             snapshot[SNAPSHOT_USAGE_MONTHLY_KWH] = monthly_metrics["usage_kwh"]
-            snapshot[SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH] = monthly_metrics[
-                "feedin_kwh"
-            ]
+            snapshot[SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH] = monthly_metrics["feedin_kwh"]
 
         hourly_rows = payloads_by_path.get(self._API_USAGE_HOURLY_PATH)
         hourly_metrics = self._extract_hourly_usage_metrics(hourly_rows)
