@@ -20,6 +20,11 @@ This file helps AI coding agents become productive quickly in this repository.
 - Before coding, read [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - Prefer minimal edits and keep changes scoped to the user request.
 - Validate with scripts/test for behavior changes and scripts/lint for style changes.
+- When user-facing names, icons, entity IDs, or labels change, verify the final Home Assistant-visible surface before wrapping up.
+- When editing dashboard examples or documentation rendering, sanity-check the rendered YAML/Markdown output, not just the source text.
+- When changing API-derived entities, validate new fields against [scripts/live_portal_scrape.py](scripts/live_portal_scrape.py) and the documented HAR/API references before exposing them in HA.
+- Run the narrowest useful test or lint command early, fix the first failing slice, and only widen scope after that slice passes.
+- Keep changes commit-ready when the user asks for a commit, and prefer conventional commit messages for repo history.
 
 ## Architecture Notes
 
