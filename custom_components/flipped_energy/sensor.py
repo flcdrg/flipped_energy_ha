@@ -17,6 +17,8 @@ from .const import (
     CONF_INCLUDE_GST,
     DEFAULT_INCLUDE_GST,
     SNAPSHOT_AMOUNT_DUE_AUD,
+    SNAPSHOT_BILLING_PERIOD_END,
+    SNAPSHOT_BILLING_PERIOD_START,
     SNAPSHOT_CURRENT_FEEDIN_TARIFF_CENTS,
     SNAPSHOT_CURRENT_IMPORT_TARIFF_CENTS,
     SNAPSHOT_FEEDIN_RATE_BLOCKS,
@@ -31,10 +33,14 @@ from .const import (
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
     SNAPSHOT_TOTAL_FEEDIN_KWH,
     SNAPSHOT_TOTAL_USAGE_KWH,
+    SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH,
+    SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH,
     SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
+    SNAPSHOT_USAGE_MONTHLY_KWH,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
     SNAPSHOT_USAGE_TODAY_KWH,
+    SNAPSHOT_USAGE_WEEKLY_KWH,
 )
 from .entity import IntegrationBlueprintEntity
 
@@ -76,6 +82,16 @@ ENTITY_DESCRIPTIONS = (
         device_class=SensorDeviceClass.DATE,
     ),
     SensorEntityDescription(
+        key=SNAPSHOT_BILLING_PERIOD_START,
+        name="Billing Period Start",
+        device_class=SensorDeviceClass.DATE,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_BILLING_PERIOD_END,
+        name="Billing Period End",
+        device_class=SensorDeviceClass.DATE,
+    ),
+    SensorEntityDescription(
         key=SNAPSHOT_TOTAL_USAGE_KWH,
         name="Total Usage",
         device_class=SensorDeviceClass.ENERGY,
@@ -85,6 +101,34 @@ ENTITY_DESCRIPTIONS = (
     SensorEntityDescription(
         key=SNAPSHOT_TOTAL_FEEDIN_KWH,
         name="Total Feed-In",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement="kWh",
+        state_class=SensorStateClass.TOTAL,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_WEEKLY_KWH,
+        name="Usage This Week",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement="kWh",
+        state_class=SensorStateClass.TOTAL,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH,
+        name="Feed-In This Week",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement="kWh",
+        state_class=SensorStateClass.TOTAL,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_MONTHLY_KWH,
+        name="Usage This Month",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement="kWh",
+        state_class=SensorStateClass.TOTAL,
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH,
+        name="Feed-In This Month",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.TOTAL,

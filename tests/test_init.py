@@ -18,7 +18,7 @@ from custom_components.flipped_energy.const import (
 pytestmark = pytest.mark.asyncio
 
 
-async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
+async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:  # noqa: PLR0915
     """Test that setting up an entry creates integration entities."""
     mock_config_entry.add_to_hass(hass)
 
@@ -30,8 +30,14 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
                 "usage_feedin_yesterday_kwh": 1.2,
+                "usage_weekly_kwh": 42.5,
+                "usage_feedin_weekly_kwh": 6.8,
+                "usage_monthly_kwh": 180.2,
+                "usage_feedin_monthly_kwh": 28.4,
                 "usage_period_start": "2026-07-20T00:00:00",
                 "usage_period_end": "2026-07-20",
+                "billing_period_start": "2026-07-01",
+                "billing_period_end": "2026-07-31",
                 "total_usage_kwh": 321.0,
                 "total_feedin_kwh": 41.5,
                 "import_rate_cents_kwh": 29.5,
@@ -77,9 +83,37 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:
     assert feedin_yesterday_state is not None
     assert feedin_yesterday_state.state == "1.2"
 
+    usage_weekly_state = hass.states.get("sensor.flipped_energy_usage_this_week")
+    assert usage_weekly_state is not None
+    assert usage_weekly_state.state == "42.5"
+
+    feedin_weekly_state = hass.states.get("sensor.flipped_energy_feed_in_this_week")
+    assert feedin_weekly_state is not None
+    assert feedin_weekly_state.state == "6.8"
+
+    usage_monthly_state = hass.states.get("sensor.flipped_energy_usage_this_month")
+    assert usage_monthly_state is not None
+    assert usage_monthly_state.state == "180.2"
+
+    feedin_monthly_state = hass.states.get("sensor.flipped_energy_feed_in_this_month")
+    assert feedin_monthly_state is not None
+    assert feedin_monthly_state.state == "28.4"
+
     usage_period_state = hass.states.get("sensor.flipped_energy_usage_period_end")
     assert usage_period_state is not None
     assert usage_period_state.state == "2026-07-20"
+
+    billing_period_start_state = hass.states.get(
+        "sensor.flipped_energy_billing_period_start"
+    )
+    assert billing_period_start_state is not None
+    assert billing_period_start_state.state == "2026-07-01"
+
+    billing_period_end_state = hass.states.get(
+        "sensor.flipped_energy_billing_period_end"
+    )
+    assert billing_period_end_state is not None
+    assert billing_period_end_state.state == "2026-07-31"
 
     plan_state = hass.states.get("sensor.flipped_energy_plan_name")
     assert plan_state is not None
@@ -184,8 +218,14 @@ async def test_setup_entry_include_gst_option_adjusts_dynamic_values(
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
                 "usage_feedin_yesterday_kwh": 1.2,
+                "usage_weekly_kwh": 42.5,
+                "usage_feedin_weekly_kwh": 6.8,
+                "usage_monthly_kwh": 180.2,
+                "usage_feedin_monthly_kwh": 28.4,
                 "usage_period_start": "2026-07-20T00:00:00",
                 "usage_period_end": "2026-07-20",
+                "billing_period_start": "2026-07-01",
+                "billing_period_end": "2026-07-31",
                 "total_usage_kwh": 321.0,
                 "total_feedin_kwh": 41.5,
                 "import_rate_cents_kwh": 10.0,
@@ -252,6 +292,10 @@ async def test_current_import_tariff_shows_when_refresh_is_current(
                     "amount_due_aud": 10.0,
                     "usage_today_kwh": 1.0,
                     "usage_feedin_yesterday_kwh": 0.5,
+                    "usage_weekly_kwh": 42.5,
+                    "usage_feedin_weekly_kwh": 6.8,
+                    "usage_monthly_kwh": 180.2,
+                    "usage_feedin_monthly_kwh": 28.4,
                     "usage_period_end": "2026-07-22",
                     "total_usage_kwh": 2.0,
                     "total_feedin_kwh": 0.5,

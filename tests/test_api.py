@@ -121,6 +121,23 @@ async def test_extract_hourly_usage_metrics_uses_latest_completed_day() -> None:
     assert snapshot[SNAPSHOT_USAGE_PERIOD_END] == "2026-07-20"
 
 
+async def test_extract_usage_totals_uses_all_rows() -> None:
+    """Test weekly and monthly usage rows produce period totals."""
+    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+
+    snapshot = client._extract_usage_totals(
+        [
+            {"time": "2026-07-01T00:00:00", "value": 1.0, "usageType": "Export"},
+            {"time": "2026-07-01T01:00:00", "value": 2.5, "usageType": "Export"},
+            {"time": "2026-07-01T02:00:00", "value": 0.4, "usageType": "Import"},
+        ]
+    )
+
+    assert snapshot is not None
+    assert snapshot["usage_kwh"] == 3.5
+    assert snapshot["feedin_kwh"] == 0.4
+
+
 async def test_extract_rates_includes_time_of_day_and_supply_charge() -> None:
     """Test rate extraction includes TOD blocks and daily supply charges."""
     client = IntegrationBlueprintApiClient("user@example.com", "secret", None)

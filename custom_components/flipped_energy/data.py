@@ -23,6 +23,10 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     amount_due_aud: float
     usage_today_kwh: float
     usage_feedin_yesterday_kwh: float
+    usage_weekly_kwh: float
+    usage_feedin_weekly_kwh: float
+    usage_monthly_kwh: float
+    usage_feedin_monthly_kwh: float
     usage_period_start: str
     usage_period_end: str
     total_usage_kwh: float
