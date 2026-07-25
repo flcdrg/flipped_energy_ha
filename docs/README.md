@@ -50,9 +50,9 @@ Supporting endpoints seen in HAR:
 | ------ | --------------------------------- | ------------------------------- | ------------------- | ------------------------------------------------------------------------ |
 | POST   | /user/login                       | None (credential login request) | Yes                 | Returns bearer token used for subsequent requests.                       |
 | GET    | /api/Tracing/correlation          | Bearer                          | Yes                 | Used as token validity check.                                            |
-| GET    | /MyAccount/ProjectAccountData     | Bearer                          | Yes                 | Primary account, plan, rates, and bill-date source.                      |
+| GET    | /MyAccount/ProjectAccountData     | Bearer                          | Yes                 | Primary account, account number, plan, rates, and bill-date source.     |
 | GET    | /Usage/usage/projectreads/hourly  | Bearer                          | Yes                 | Historical usage sensor source; provides usage amount and period dates.  |
-| GET    | /Usage/usage/projectreads/daily   | Bearer                          | Yes                 | Usage totals, feed-in totals, latest-day usage, billing range from rows. |
+| GET    | /Usage/usage/projectreads/daily   | Bearer                          | Yes                 | Usage totals, feed-in totals, meter NMI, latest-day usage, billing range from rows. |
 | GET    | /Usage/usage/projectreads/weekly  | Bearer                          | Yes                 | Weekly usage and feed-in totals.                                         |
 | GET    | /Usage/usage/projectreads/monthly | Bearer                          | Yes                 | Monthly usage and feed-in totals.                                        |
 | GET    | /MyAccount/GetPaymentMethods      | Bearer                          | No                  | Observed in portal traffic; currently not mapped to entities.            |
@@ -72,11 +72,13 @@ Supporting endpoints seen in HAR:
 The Home Assistant integration currently derives values from:
 
 - Plan name: MyAccount ProjectAccountData
+- Account number: MyAccount ProjectAccountData accountNumber
 - Import and feed-in rates: product.currentPlan.billingUnits
 - Amount due: account amount-like fields (fallback to 0 when not overdue)
 - Usage: Usage projectreads hourly
 - Usage period metadata: Usage projectreads hourly
 - Total usage, total feed-in: Usage projectreads daily
+- Meter NMI: Usage projectreads daily rows
 - Weekly usage, feed-in: Usage projectreads weekly
 - Monthly usage, feed-in: Usage projectreads monthly
 - Billing period start/end: usage date range or next bill fields

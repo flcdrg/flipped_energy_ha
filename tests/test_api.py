@@ -11,11 +11,13 @@ from custom_components.flipped_energy.api import (
     IntegrationBlueprintApiClientAuthenticationError,
 )
 from custom_components.flipped_energy.const import (
+    SNAPSHOT_ACCOUNT_NUMBER,
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
     SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
+    SNAPSHOT_METER_NMI,
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
@@ -147,6 +149,7 @@ async def test_extract_rates_includes_time_of_day_and_supply_charge() -> None:
             "/MyAccount/ProjectAccountData": {
                 "accounts": [
                     {
+                        "accountNumber": "ACC-123456",
                         "productName": "Flipped Saver",
                         "product": {
                             "currentPlan": {
@@ -196,10 +199,20 @@ async def test_extract_rates_includes_time_of_day_and_supply_charge() -> None:
                         },
                     }
                 ]
-            }
+            },
+            "/Usage/usage/projectreads/daily": [
+                {
+                    "time": "2026-07-01T00:00:00",
+                    "value": 1.0,
+                    "usageType": "Export",
+                    "nmi": "NMI-1234567890",
+                }
+            ],
         }
     )
 
+    assert snapshot[SNAPSHOT_ACCOUNT_NUMBER] == "ACC-123456"
+    assert snapshot[SNAPSHOT_METER_NMI] == "NMI-1234567890"
     assert snapshot[SNAPSHOT_IMPORT_RATE_CENTS] == 30.908333
     assert snapshot[SNAPSHOT_FEEDIN_RATE_CENTS] == 2.0
     assert snapshot[SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS] == 110.0

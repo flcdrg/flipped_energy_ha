@@ -35,6 +35,7 @@ Observed status:
 Integration mapping:
 
 - Supporting source for total usage and feed-in rollups.
+- meter_nmi from the first non-empty nmi value in fetched usage rows
 - total_usage_kwh from all Export row values in window (customer import usage)
 - total_feedin_kwh from all Import row values in window (customer feed-in export)
 - billing_period_start and billing_period_end from min/max row dates

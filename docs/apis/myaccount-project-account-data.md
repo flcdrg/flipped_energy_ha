@@ -40,6 +40,7 @@ Useful billing unit fields:
 Integration mapping:
 
 - plan_name from productName
+- account_number from accountNumber
 - import_rate_cents_kwh derived from positive chargePerKwh units
 - feedin_rate_cents_kwh derived from FeedInTariff units
 - amount_due_aud inferred from amount-like fields if present, else 0 when not overdue
