@@ -13,3 +13,6 @@ fi
 
 # Sync the project environment and lockfile with the dev dependency group.
 uv sync --group dev
+
+# Use the repo-managed hooks for local commit policy checks.
+git config --local core.hooksPath .githooks
