@@ -74,6 +74,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=20.0,
         help="Total aiohttp timeout in seconds (default: 20)",
     )
+    parser.add_argument(
+        "--keys",
+        nargs="*",
+        help=(
+            "Optional snapshot keys to print (for example: billing_period_start "
+            "usage_weekly_kwh usage_monthly_kwh)"
+        ),
+    )
     return parser
 
 
@@ -123,6 +131,9 @@ async def _run(args: argparse.Namespace) -> int:
         except IntegrationBlueprintApiClientError as err:
             print(f"API error: {err}", file=sys.stderr)
             return 6
+
+    if args.keys:
+        snapshot = {key: snapshot[key] for key in args.keys if key in snapshot}
 
     print(json.dumps(snapshot, indent=2, sort_keys=True))
     return 0
