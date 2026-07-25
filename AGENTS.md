@@ -24,6 +24,7 @@ This file helps AI coding agents become productive quickly in this repository.
 - When editing dashboard examples or documentation rendering, sanity-check the rendered YAML/Markdown output, not just the source text.
 - When changing API-derived entities, validate new fields against [scripts/live_portal_scrape.py](scripts/live_portal_scrape.py) and the documented HAR/API references before exposing them in HA.
 - Run the narrowest useful test or lint command early, fix the first failing slice, and only widen scope after that slice passes.
+- Keep commits on a feature branch rather than `main`.
 - Keep changes commit-ready when the user asks for a commit, and prefer conventional commit messages for repo history.
 
 ## Architecture Notes
