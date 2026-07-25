@@ -38,6 +38,10 @@ from .const import (
     SNAPSHOT_USAGE_HOURLY_ROWS,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
+    SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH,
+    SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH,
+    SNAPSHOT_USAGE_MONTHLY_KWH,
+    SNAPSHOT_USAGE_WEEKLY_KWH,
     SNAPSHOT_USAGE_TODAY_KWH,
 )
 
@@ -111,6 +115,8 @@ class IntegrationBlueprintApiClient:
     _API_VALIDATE_PATH = "/api/Tracing/correlation"
     _API_USAGE_HOURLY_PATH = "/Usage/usage/projectreads/hourly"
     _API_USAGE_DAILY_PATH = "/Usage/usage/projectreads/daily"
+    _API_USAGE_WEEKLY_PATH = "/Usage/usage/projectreads/weekly"
+    _API_USAGE_MONTHLY_PATH = "/Usage/usage/projectreads/monthly"
     _API_SNAPSHOT_PATHS = (
         "/MyAccount/GetAccountData",
         "/MyAccount/ProjectAccountData",
@@ -347,6 +353,14 @@ class IntegrationBlueprintApiClient:
             if usage_rows:
                 payloads_by_path[self._API_USAGE_DAILY_PATH] = usage_rows
 
+            weekly_rows = await self._fetch_usage_rows(self._API_USAGE_WEEKLY_PATH)
+            if weekly_rows:
+                payloads_by_path[self._API_USAGE_WEEKLY_PATH] = weekly_rows
+
+            monthly_rows = await self._fetch_usage_rows(self._API_USAGE_MONTHLY_PATH)
+            if monthly_rows:
+                payloads_by_path[self._API_USAGE_MONTHLY_PATH] = monthly_rows
+
         return payloads_by_path
 
     async def _fetch_usage_rows(self, path: str) -> list[dict[str, Any]]:
@@ -434,6 +448,22 @@ class IntegrationBlueprintApiClient:
         snapshot.update(usage_metrics)
         if isinstance(usage_rows, list):
             snapshot[SNAPSHOT_USAGE_DAILY_ROWS] = usage_rows
+
+        weekly_rows = payloads_by_path.get(self._API_USAGE_WEEKLY_PATH)
+        weekly_metrics = self._extract_usage_totals(weekly_rows)
+        if weekly_metrics is not None:
+            snapshot[SNAPSHOT_USAGE_WEEKLY_KWH] = weekly_metrics["usage_kwh"]
+            snapshot[SNAPSHOT_USAGE_FEEDIN_WEEKLY_KWH] = weekly_metrics[
+                "feedin_kwh"
+            ]
+
+        monthly_rows = payloads_by_path.get(self._API_USAGE_MONTHLY_PATH)
+        monthly_metrics = self._extract_usage_totals(monthly_rows)
+        if monthly_metrics is not None:
+            snapshot[SNAPSHOT_USAGE_MONTHLY_KWH] = monthly_metrics["usage_kwh"]
+            snapshot[SNAPSHOT_USAGE_FEEDIN_MONTHLY_KWH] = monthly_metrics[
+                "feedin_kwh"
+            ]
 
         hourly_rows = payloads_by_path.get(self._API_USAGE_HOURLY_PATH)
         hourly_metrics = self._extract_hourly_usage_metrics(hourly_rows)
@@ -812,6 +842,41 @@ class IntegrationBlueprintApiClient:
         metrics[SNAPSHOT_USAGE_TODAY_KWH] = round(usage_today, 6)
         metrics[SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH] = round(feedin_yesterday, 6)
         return metrics
+
+    def _extract_usage_totals(self, usage_rows: Any) -> dict[str, float] | None:
+        """Extract total import and feed-in usage from usage rows."""
+        if not isinstance(usage_rows, list):
+            return None
+
+        customer_import_usage = 0.0
+        customer_feedin_usage = 0.0
+        saw_any_rows = False
+
+        for row in usage_rows:
+            if not isinstance(row, dict):
+                continue
+            stamp = self._coerce_text(row.get("time"))
+            usage_type = (self._coerce_text(row.get("usageType")) or "").lower()
+            value = self._coerce_float(row.get("value"))
+            if not stamp or value is None:
+                continue
+
+            saw_any_rows = True
+            # Flipped usageType values are observed in retailer perspective:
+            # - API Export corresponds to customer grid import (consumption)
+            # - API Import corresponds to customer feed-in export
+            if usage_type == "export":
+                customer_import_usage += abs(value)
+            elif usage_type == "import":
+                customer_feedin_usage += abs(value)
+
+        if not saw_any_rows:
+            return None
+
+        return {
+            "usage_kwh": round(customer_import_usage, 6),
+            "feedin_kwh": round(customer_feedin_usage, 6),
+        }
 
     def _extract_hourly_usage_metrics(self, usage_rows: Any) -> dict[str, Any]:
         """Extract the latest completed usage period from hourly rows."""

@@ -53,8 +53,8 @@ Supporting endpoints seen in HAR:
 | GET    | /MyAccount/ProjectAccountData     | Bearer                          | Yes                 | Primary account, plan, rates, and bill-date source.                      |
 | GET    | /Usage/usage/projectreads/hourly  | Bearer                          | Yes                 | Historical usage sensor source; provides usage amount and period dates.  |
 | GET    | /Usage/usage/projectreads/daily   | Bearer                          | Yes                 | Usage totals, feed-in totals, latest-day usage, billing range from rows. |
-| GET    | /Usage/usage/projectreads/weekly  | Bearer                          | No                  | Weekly usage endpoint observed in portal traffic.                        |
-| GET    | /Usage/usage/projectreads/monthly | Bearer                          | No                  | Monthly usage endpoint observed in portal traffic.                       |
+| GET    | /Usage/usage/projectreads/weekly  | Bearer                          | Yes                 | Weekly usage and feed-in totals.                                         |
+| GET    | /Usage/usage/projectreads/monthly | Bearer                          | Yes                 | Monthly usage and feed-in totals.                                        |
 | GET    | /MyAccount/GetPaymentMethods      | Bearer                          | No                  | Observed in portal traffic; currently not mapped to entities.            |
 | GET    | /MyAccount/user                   | Bearer                          | No                  | Profile data endpoint, not currently exposed in HA entities.             |
 | GET    | /MyAccount/RecentPayments         | Bearer                          | No                  | Recent payment history endpoint, currently unused.                       |
@@ -77,4 +77,6 @@ The Home Assistant integration currently derives values from:
 - Usage: Usage projectreads hourly
 - Usage period metadata: Usage projectreads hourly
 - Total usage, total feed-in: Usage projectreads daily
+- Weekly usage, feed-in: Usage projectreads weekly
+- Monthly usage, feed-in: Usage projectreads monthly
 - Billing period start/end: usage date range or next bill fields

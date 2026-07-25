@@ -29,4 +29,4 @@ Observed status:
 
 Notes:
 
-- Currently documented from HAR only; not consumed by the integration.
+- Consumed by the integration for monthly usage and feed-in sensors.
