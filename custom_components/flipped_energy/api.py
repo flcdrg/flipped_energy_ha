@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 from .const import (
+    SNAPSHOT_ACCOUNT_NUMBER,
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_AUTH_OK,
     SNAPSHOT_BILLING_PERIOD_END,
@@ -28,6 +29,7 @@ from .const import (
     SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
+    SNAPSHOT_METER_NMI,
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
@@ -416,6 +418,10 @@ class IntegrationBlueprintApiClient:
         project_data = payloads_by_path.get("/MyAccount/ProjectAccountData")
         account = self._select_primary_account(project_data)
         if account:
+            account_number = self._coerce_text(account.get("accountNumber"))
+            if account_number:
+                snapshot[SNAPSHOT_ACCOUNT_NUMBER] = account_number
+
             snapshot[SNAPSHOT_PLAN_NAME] = self._coerce_text(
                 account.get("productName")
             ) or self._coerce_text((account.get("product") or {}).get("name"))
@@ -449,6 +455,15 @@ class IntegrationBlueprintApiClient:
         if isinstance(usage_rows, list):
             snapshot[SNAPSHOT_USAGE_DAILY_ROWS] = usage_rows
 
+        meter_nmi = self._extract_meter_nmi(
+            payloads_by_path.get(self._API_USAGE_DAILY_PATH),
+            payloads_by_path.get(self._API_USAGE_HOURLY_PATH),
+            payloads_by_path.get(self._API_USAGE_WEEKLY_PATH),
+            payloads_by_path.get(self._API_USAGE_MONTHLY_PATH),
+        )
+        if meter_nmi:
+            snapshot[SNAPSHOT_METER_NMI] = meter_nmi
+
         weekly_rows = payloads_by_path.get(self._API_USAGE_WEEKLY_PATH)
         weekly_metrics = self._extract_usage_totals(weekly_rows)
         if weekly_metrics is not None:
@@ -478,6 +493,19 @@ class IntegrationBlueprintApiClient:
             return None
         first = accounts[0]
         return first if isinstance(first, dict) else None
+
+    def _extract_meter_nmi(self, *usage_payloads: Any) -> str | None:
+        """Extract the first meter NMI found in usage rows."""
+        for payload in usage_payloads:
+            if not isinstance(payload, list):
+                continue
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                nmi = self._coerce_text(row.get("nmi"))
+                if nmi:
+                    return nmi
+        return None
 
     def _extract_rates_from_account(  # noqa: PLR0912, PLR0915
         self, account: dict[str, Any]

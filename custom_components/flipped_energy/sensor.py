@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_INCLUDE_GST,
     DEFAULT_INCLUDE_GST,
+    SNAPSHOT_ACCOUNT_NUMBER,
     SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_BILLING_PERIOD_END,
     SNAPSHOT_BILLING_PERIOD_START,
@@ -28,6 +29,7 @@ from .const import (
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_IMPORT_TOU_SCHEDULE,
     SNAPSHOT_LAST_SUCCESSFUL_UPDATE,
+    SNAPSHOT_METER_NMI,
     SNAPSHOT_PLAN_NAME,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
@@ -56,6 +58,14 @@ ENTITY_DESCRIPTIONS = (
         key=SNAPSHOT_PLAN_NAME,
         name="Plan Name",
         icon="mdi:lightning-bolt-circle",
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_ACCOUNT_NUMBER,
+        name="Account Number",
+    ),
+    SensorEntityDescription(
+        key=SNAPSHOT_METER_NMI,
+        name="Meter NMI",
     ),
     SensorEntityDescription(
         key=SNAPSHOT_AMOUNT_DUE_AUD,

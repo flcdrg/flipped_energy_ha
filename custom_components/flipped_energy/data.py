@@ -20,6 +20,8 @@ class FlippedEnergySnapshot(TypedDict, total=False):
     """Normalized account data fetched from the Flipped API."""
 
     plan_name: str
+    account_number: str
+    meter_nmi: str
     amount_due_aud: float
     usage_today_kwh: float
     usage_feedin_yesterday_kwh: float

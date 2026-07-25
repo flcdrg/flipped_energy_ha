@@ -27,6 +27,8 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:  #
         new=AsyncMock(
             return_value={
                 "plan_name": "Flipped Saver",
+                "account_number": "ACC-123456",
+                "meter_nmi": "NMI-1234567890",
                 "amount_due_aud": 123.45,
                 "usage_today_kwh": 8.9,
                 "usage_feedin_yesterday_kwh": 1.2,
@@ -118,6 +120,14 @@ async def test_setup_entry_creates_entities(hass, mock_config_entry) -> None:  #
     plan_state = hass.states.get("sensor.flipped_energy_plan_name")
     assert plan_state is not None
     assert plan_state.state == "Flipped Saver"
+
+    account_number_state = hass.states.get("sensor.flipped_energy_account_number")
+    assert account_number_state is not None
+    assert account_number_state.state == "ACC-123456"
+
+    meter_nmi_state = hass.states.get("sensor.flipped_energy_meter_nmi")
+    assert meter_nmi_state is not None
+    assert meter_nmi_state.state == "NMI-1234567890"
 
     binary_sensor_state = hass.states.get("binary_sensor.flipped_energy_authenticated")
     assert binary_sensor_state is not None

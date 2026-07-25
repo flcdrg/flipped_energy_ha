@@ -78,8 +78,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--keys",
         nargs="*",
         help=(
-            "Optional snapshot keys to print (for example: billing_period_start "
-            "usage_weekly_kwh usage_monthly_kwh)"
+            "Optional snapshot keys to print (for example: account_number "
+            "meter_nmi billing_period_start usage_weekly_kwh usage_monthly_kwh)"
         ),
     )
     return parser
