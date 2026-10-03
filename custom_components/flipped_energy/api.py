@@ -10,7 +10,7 @@ import socket
 from contextlib import suppress
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode
 
 import aiohttp
 
@@ -112,20 +112,20 @@ def _verify_response_or_raise(response: aiohttp.ClientResponse) -> None:
 class IntegrationBlueprintApiClient:
     """Flipped Energy authenticated API client."""
 
-    _API_BASE_URL = "https://api.flipped.energy"
-    _API_LOGIN_PATH = "/user/login"
-    _API_VALIDATE_PATH = "/api/Tracing/correlation"
-    _API_USAGE_HOURLY_PATH = "/Usage/usage/projectreads/hourly"
-    _API_USAGE_DAILY_PATH = "/Usage/usage/projectreads/daily"
-    _API_USAGE_WEEKLY_PATH = "/Usage/usage/projectreads/weekly"
-    _API_USAGE_MONTHLY_PATH = "/Usage/usage/projectreads/monthly"
+    # Flipped Energy developer API, reference:
+    # https://mcp-api.flipped.energy/developer/v1/openapi.json
+    # Tokens: https://flipped.energy/accounts/developer (My Details > APIs and MCPs).
+    _API_BASE_URL = "https://mcp-api.flipped.energy/developer/v1"
+    _API_USAGE_HOURLY_PATH = "/api/Usage/usage/projectreads/hourly"
+    _API_USAGE_DAILY_PATH = "/api/Usage/usage/projectreads/daily"
+    _API_USAGE_WEEKLY_PATH = "/api/Usage/usage/projectreads/weekly"
+    _API_USAGE_MONTHLY_PATH = "/api/Usage/usage/projectreads/monthly"
+    _API_PROJECT_ACCOUNT_DATA_PATH = "/api/MyAccount/ProjectAccountData"
     _API_SNAPSHOT_PATHS = (
-        "/MyAccount/GetAccountData",
-        "/MyAccount/ProjectAccountData",
-        "/MyAccount/landingpage",
-        "/Billing/billing/index",
-        "/Usage/usage/getreads",
-        "/Usage/usage/getsettlements",
+        "/api/MyAccount/GetAccountData",
+        _API_PROJECT_ACCOUNT_DATA_PATH,
+        "/api/MyAccount/landingpage",
+        "/api/Billing/billing/index",
     )
     _RATE_DOLLARS_THRESHOLD = 2
     _CURRENCY_DOLLARS_THRESHOLD = 20
@@ -134,17 +134,13 @@ class IntegrationBlueprintApiClient:
 
     def __init__(
         self,
-        username: str,
-        password: str,
+        api_token: str,
         session: aiohttp.ClientSession,
         enabled_pages: dict[str, bool] | None = None,
     ) -> None:
-        """Initialize the API client."""
-        self._username = username
-        self._password = password
+        """Initialize the API client with a developer API token (fdk_...)."""
+        self._api_token = api_token
         self._session = session
-        self._authenticated = False
-        self._auth_token: str | None = None
         enabled = enabled_pages or {
             "plan": True,
             "usage": True,
@@ -158,16 +154,9 @@ class IntegrationBlueprintApiClient:
         self,
         enabled_pages: dict[str, bool] | None = None,
     ) -> Any:
-        """Authenticate and fetch a normalized account snapshot from APIs."""
+        """Fetch a normalized account snapshot from the developer API."""
         effective_pages = self._effective_enabled_pages(enabled_pages)
-        await self._ensure_authenticated()
-
-        try:
-            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
-        except IntegrationBlueprintApiClientAuthenticationError:
-            self._authenticated = False
-            await self._ensure_authenticated(force=True)
-            snapshot = await self._augment_snapshot_from_api({}, effective_pages)
+        snapshot = await self._augment_snapshot_from_api({}, effective_pages)
 
         missing_required_fields = self._missing_required_fields(
             snapshot,
@@ -202,62 +191,6 @@ class IntegrationBlueprintApiClient:
         if not any(effective.values()):
             effective["usage"] = True
         return effective
-
-    async def _ensure_authenticated(self, *, force: bool = False) -> None:
-        """Ensure portal session is authenticated."""
-        if self._authenticated and not force:
-            is_valid = await self._is_session_valid()
-            if is_valid:
-                return
-
-        await self._login()
-        self._authenticated = True
-
-    async def _is_session_valid(self) -> bool:
-        """Check whether the current bearer token is still accepted by the API."""
-        if not self._auth_token:
-            return False
-
-        async with self._session.get(
-            urljoin(self._API_BASE_URL, self._API_VALIDATE_PATH),
-            allow_redirects=False,
-            headers={"Authorization": f"Bearer {self._auth_token}"},
-        ) as response:
-            await response.read()
-            return response.status == HTTPStatus.OK
-
-    async def _login(self) -> None:
-        """Authenticate against the API used by the Flipped portal SPA."""
-        login_url = urljoin(self._API_BASE_URL, self._API_LOGIN_PATH)
-
-        response = await self._session.post(
-            login_url,
-            json={
-                "email": self._username,
-                "password": self._password,
-            },
-            allow_redirects=False,
-            headers={"Content-Type": "application/json"},
-        )
-
-        if response.status in (400, 401, 403):
-            msg = "Invalid credentials"
-            raise IntegrationBlueprintApiClientAuthenticationError(msg)
-
-        _verify_response_or_raise(response)
-
-        payload = await response.json(content_type=None)
-        token = payload.get("token") if isinstance(payload, dict) else None
-        if not token or not isinstance(token, str):
-            msg = "Login succeeded but no auth token was returned"
-            raise IntegrationBlueprintApiClientAuthenticationError(msg)
-
-        self._auth_token = token
-
-        is_valid = await self._is_session_valid()
-        if not is_valid:
-            msg = "Authenticated token is not valid"
-            raise IntegrationBlueprintApiClientAuthenticationError(msg)
 
     def _missing_required_fields(
         self,
@@ -339,6 +272,11 @@ class IntegrationBlueprintApiClient:
             for path in self._API_SNAPSHOT_PATHS:
                 try:
                     payload = await self._fetch_api_json(path)
+                except (
+                    IntegrationBlueprintApiClientAuthenticationError,
+                    IntegrationBlueprintApiClientRateLimitError,
+                ):
+                    raise
                 except IntegrationBlueprintApiClientError:
                     continue
                 if payload is not None:
@@ -385,6 +323,11 @@ class IntegrationBlueprintApiClient:
             path_with_query = f"{path}?{query}"
             try:
                 payload = await self._fetch_api_json(path_with_query)
+            except (
+                IntegrationBlueprintApiClientAuthenticationError,
+                IntegrationBlueprintApiClientRateLimitError,
+            ):
+                raise
             except IntegrationBlueprintApiClientError:
                 continue
 
@@ -415,7 +358,7 @@ class IntegrationBlueprintApiClient:
         """Map known API endpoint payloads into our normalized snapshot."""
         snapshot: dict[str, Any] = {}
 
-        project_data = payloads_by_path.get("/MyAccount/ProjectAccountData")
+        project_data = payloads_by_path.get(self._API_PROJECT_ACCOUNT_DATA_PATH)
         account = self._select_primary_account(project_data)
         if account:
             account_number = self._coerce_text(account.get("accountNumber"))
@@ -977,15 +920,11 @@ class IntegrationBlueprintApiClient:
         return None
 
     async def _fetch_api_json(self, path: str) -> Any:
-        """Fetch JSON from an authenticated API path."""
-        headers: dict[str, str] | None = None
-        if self._auth_token:
-            headers = {"Authorization": f"Bearer {self._auth_token}"}
-
+        """Fetch JSON from a developer API path."""
         return await self._api_wrapper(
             method="GET",
-            url=urljoin(self._API_BASE_URL, path),
-            headers=headers,
+            url=f"{self._API_BASE_URL}{path}",
+            headers={"Authorization": f"Bearer {self._api_token}"},
         )
 
     def _find_value_by_key_patterns(

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_API_TOKEN
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
-from slugify import slugify
 
 from .api import (
     IntegrationBlueprintApiClient,
@@ -16,6 +17,10 @@ from .api import (
     IntegrationBlueprintApiClientCommunicationError,
     IntegrationBlueprintApiClientError,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 from .const import (
     CONF_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     CONF_ENABLE_INVOICES_PAGE,
@@ -32,6 +37,17 @@ from .const import (
     MAX_REFRESH_INTERVAL_MINUTES,
     MIN_CURRENT_RATE_REFRESH_INTERVAL_MINUTES,
     MIN_REFRESH_INTERVAL_MINUTES,
+    SNAPSHOT_ACCOUNT_NUMBER,
+)
+
+DEVELOPER_PORTAL_URL = "https://flipped.energy/accounts/developer"
+
+TOKEN_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_API_TOKEN): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD),
+        ),
+    }
 )
 
 
@@ -45,33 +61,16 @@ class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict | None = None,
     ) -> config_entries.ConfigFlowResult:
         """Handle a flow initialized by the user."""
-        _errors = {}
+        errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                await self._test_credentials(
-                    username=user_input[CONF_USERNAME],
-                    password=user_input[CONF_PASSWORD],
-                )
-            except IntegrationBlueprintApiClientAuthenticationError as exception:
-                LOGGER.warning(exception)
-                _errors["base"] = "auth"
-            except IntegrationBlueprintApiClientCommunicationError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except IntegrationBlueprintApiClientError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
-                await self.async_set_unique_id(
-                    ## Do NOT use this in production code
-                    ## The unique_id should never be something that can change
-                    ## https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                    unique_id=slugify(user_input[CONF_USERNAME])
-                )
+            snapshot = await self._snapshot_or_error(user_input[CONF_API_TOKEN], errors)
+            if snapshot is not None:
+                account_number = snapshot[SNAPSHOT_ACCOUNT_NUMBER]
+                await self.async_set_unique_id(str(account_number))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=user_input[CONF_USERNAME],
-                    data=user_input,
+                    title=f"Flipped Energy {account_number}",
+                    data={CONF_API_TOKEN: user_input[CONF_API_TOKEN]},
                 )
 
         integration = async_get_loaded_integration(self.hass, DOMAIN)
@@ -83,35 +82,65 @@ class BlueprintFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             description_placeholders={
                 "documentation_url": integration.documentation,
+                "token_url": DEVELOPER_PORTAL_URL,
             },
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_USERNAME,
-                        default=(user_input or {}).get(CONF_USERNAME, vol.UNDEFINED),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.PASSWORD,
-                        ),
-                    ),
-                },
-            ),
-            errors=_errors,
+            data_schema=TOKEN_SCHEMA,
+            errors=errors,
         )
 
-    async def _test_credentials(self, username: str, password: str) -> None:
-        """Validate credentials."""
+    async def async_step_reauth(
+        self,
+        entry_data: Mapping[str, Any],  # noqa: ARG002
+    ) -> config_entries.ConfigFlowResult:
+        """Ask for a developer API token when the stored one is refused or missing."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Validate the new token and store it on the existing entry."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            snapshot = await self._snapshot_or_error(user_input[CONF_API_TOKEN], errors)
+            if snapshot is not None:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data={CONF_API_TOKEN: user_input[CONF_API_TOKEN]},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            description_placeholders={"token_url": DEVELOPER_PORTAL_URL},
+            data_schema=TOKEN_SCHEMA,
+            errors=errors,
+        )
+
+    async def _snapshot_or_error(
+        self, api_token: str, errors: dict[str, str]
+    ) -> dict[str, Any] | None:
+        """Fetch a snapshot with the token; on failure fill errors and return None."""
         client = IntegrationBlueprintApiClient(
-            username=username,
-            password=password,
+            api_token=api_token,
             session=async_get_clientsession(self.hass),
         )
-        await client.async_get_data()
+        try:
+            snapshot = await client.async_get_data()
+        except IntegrationBlueprintApiClientAuthenticationError as exception:
+            LOGGER.warning(exception)
+            errors["base"] = "auth"
+        except IntegrationBlueprintApiClientCommunicationError as exception:
+            LOGGER.error(exception)
+            errors["base"] = "connection"
+        except IntegrationBlueprintApiClientError as exception:
+            LOGGER.exception(exception)
+            errors["base"] = "unknown"
+        else:
+            if snapshot.get(SNAPSHOT_ACCOUNT_NUMBER) is None:
+                errors["base"] = "no_account"
+                return None
+            return snapshot
+        return None
 
     @staticmethod
     @config_entries.callback

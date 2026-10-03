@@ -2,12 +2,12 @@
 
 Custom Home Assistant integration for [Flipped Energy](https://flipped.energy/) account data.
 
-This integration authenticates against the Flipped API and exposes plan, billing, and usage information as Home Assistant entities. It also imports historical usage as Recorder external statistics so you can chart it directly.
+This integration reads the [Flipped Energy developer API](https://mcp-api.flipped.energy/developer/v1/openapi.json) with a developer API token and exposes plan, billing, and usage information as Home Assistant entities. It also imports historical usage as Recorder external statistics so you can chart it directly.
 
 ## Features
 
 - API-only integration (no portal page parsing).
-- Config flow setup with username and password.
+- Config flow setup with a Flipped Energy developer API token (no password stored).
 - Sensors for:
   - plan name
   - amount due
@@ -34,7 +34,7 @@ Preferred: install with HACS
 6. Restart Home Assistant.
 7. Go to `Settings` -> `Devices & Services` -> `Add Integration`.
 8. Search for `Flipped Energy`.
-9. Enter your Flipped credentials.
+9. Paste your developer API token (see [Create a token](#create-a-token)).
 
 Manual installation (fallback):
 
@@ -42,7 +42,21 @@ Manual installation (fallback):
 2. Restart Home Assistant.
 3. Go to `Settings` -> `Devices & Services` -> `Add Integration`.
 4. Search for `Flipped Energy`.
-5. Enter your Flipped credentials.
+5. Paste your developer API token (see [Create a token](#create-a-token)).
+
+## Create a token
+
+1. Sign in at https://flipped.energy/accounts/developer (My Details > APIs and MCPs) and turn APIs and MCPs on.
+2. Create a token with scope **Read** (this integration only reads) and the longest expiry offered (365 days).
+3. Copy the token (it starts with `fdk_`) and paste it when adding the integration.
+
+Tokens expire, and changing your Flipped password revokes every token. When a token stops working, Home Assistant asks for a new one (**Settings** > **Devices & Services** > **Flipped Energy** > **Reconfigure**).
+
+The developer API allows 60 calls per minute and 5,000 per day, shared by all of an account's tokens; with the default intervals this integration makes 4 calls every 10 minutes and up to 16 on each 30-minute full refresh, about 1,200 a day.
+
+**Upgrading from a version that used your username and password:** after updating, Home Assistant shows "Flipped Energy needs a developer API token". Create a token as above and enter it; the entry and its entities stay as they are.
+
+Questions about the API: dev@flipped.energy.
 
 For local development in this repository:
 

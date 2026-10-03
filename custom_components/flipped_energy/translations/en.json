@@ -2,20 +2,28 @@
     "config": {
         "step": {
             "user": {
-                "description": "If you need help with the configuration have a look here: {documentation_url}",
+                "description": "Create a developer API token in the Flipped portal: My Details > APIs and MCPs ({token_url}). Read only is enough. Help: {documentation_url}",
                 "data": {
-                    "username": "Username",
-                    "password": "Password"
+                    "api_token": "Developer API token"
+                }
+            },
+            "reauth_confirm": {
+                "title": "New Flipped Energy token",
+                "description": "Flipped Energy needs a developer API token: the stored one was refused, or this entry still has a portal username and password. Create a token in the Flipped portal: My Details > APIs and MCPs ({token_url}). Read only is enough.",
+                "data": {
+                    "api_token": "Developer API token"
                 }
             }
         },
         "error": {
-            "auth": "Username/Password is wrong.",
+            "auth": "The token was refused. Check it has not expired or been revoked, and that APIs and MCPs is turned on in the Flipped portal.",
             "connection": "Unable to connect to the server.",
+            "no_account": "The token works but no account number came back.",
             "unknown": "Unknown error occurred."
         },
         "abort": {
-            "already_configured": "This entry is already configured."
+            "already_configured": "This account is already configured.",
+            "reauth_successful": "The new token is saved."
         }
     },
     "options": {
