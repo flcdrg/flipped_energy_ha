@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_API_TOKEN
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.flipped_energy.const import DOMAIN
@@ -27,7 +27,6 @@ def mock_config_entry() -> MockConfigEntry:
         title="Test User",
         unique_id="test-user",
         data={
-            CONF_USERNAME: "user@example.com",
-            CONF_PASSWORD: "secret",
+            CONF_API_TOKEN: "fdk_test",
         },
     )

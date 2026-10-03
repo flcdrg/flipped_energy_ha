@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -12,17 +12,13 @@ from custom_components.flipped_energy.api import (
 )
 from custom_components.flipped_energy.const import (
     SNAPSHOT_ACCOUNT_NUMBER,
-    SNAPSHOT_AMOUNT_DUE_AUD,
     SNAPSHOT_FEEDIN_RATE_BLOCKS,
     SNAPSHOT_FEEDIN_RATE_CENTS,
     SNAPSHOT_IMPORT_RATE_BLOCKS,
     SNAPSHOT_IMPORT_RATE_CENTS,
     SNAPSHOT_METER_NMI,
-    SNAPSHOT_PLAN_NAME,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_CENTS,
     SNAPSHOT_SUPPLY_CHARGE_DAILY_INCL_GST_CENTS,
-    SNAPSHOT_TOTAL_FEEDIN_KWH,
-    SNAPSHOT_TOTAL_USAGE_KWH,
     SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH,
     SNAPSHOT_USAGE_PERIOD_END,
     SNAPSHOT_USAGE_PERIOD_START,
@@ -32,65 +28,66 @@ from custom_components.flipped_energy.const import (
 pytestmark = pytest.mark.asyncio
 
 
-async def test_is_session_valid_releases_response_body() -> None:
-    """Test session validation consumes response body to release connection."""
+def _response(status: int, payload: object) -> MagicMock:
+    response = MagicMock()
+    response.status = status
+    response.headers = {}
+    response.json = AsyncMock(return_value=payload)
+    response.raise_for_status = MagicMock()
+    return response
+
+
+async def test_requests_use_developer_api_base_and_bearer_token() -> None:
+    """Every call goes to the developer API with the token as a bearer header."""
     session = MagicMock()
-    client = IntegrationBlueprintApiClient("user@example.com", "secret", session)
-    client._auth_token = "token-value"
+    session.request = AsyncMock(return_value=_response(200, {"ok": True}))
+    client = IntegrationBlueprintApiClient("fdk_test", session)
 
-    response = AsyncMock()
-    response.url = "https://flipped.energy/accounts/"
-    response.status = 200
+    assert await client._fetch_api_json("/api/MyAccount/ProjectAccountData") == {
+        "ok": True
+    }
 
-    context_manager = AsyncMock()
-    context_manager.__aenter__.return_value = response
-    context_manager.__aexit__.return_value = None
-    session.get.return_value = context_manager
+    session.request.assert_awaited_once()
+    kwargs = session.request.await_args.kwargs
+    assert (
+        kwargs["url"]
+        == "https://mcp-api.flipped.energy/developer/v1/api/MyAccount/ProjectAccountData"
+    )
+    assert kwargs["headers"] == {"Authorization": "Bearer fdk_test"}
 
-    assert await client._is_session_valid() is True
-    response.read.assert_awaited_once()
+
+async def test_refused_token_raises_auth_error_instead_of_skipping_paths() -> None:
+    """A 401 surfaces as an auth error (reauth), not as missing snapshot fields."""
+    session = MagicMock()
+    session.request = AsyncMock(return_value=_response(401, {"title": "token revoked"}))
+    client = IntegrationBlueprintApiClient("fdk_revoked", session)
+
+    with pytest.raises(IntegrationBlueprintApiClientAuthenticationError):
+        await client.async_get_data()
 
 
-async def test_async_get_data_reauths_after_session_expiry() -> None:
-    """Test async_get_data retries with forced re-auth if API calls expire."""
-    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+async def test_snapshot_does_not_fetch_reads_or_settlements() -> None:
+    """The snapshot skips getreads and getsettlements: no sensor used them."""
+    session = MagicMock()
+    session.request = AsyncMock(return_value=_response(200, []))
+    client = IntegrationBlueprintApiClient("fdk_test", session)
 
-    with (
-        patch.object(client, "_ensure_authenticated", new=AsyncMock()) as auth_mock,
-        patch.object(
-            client,
-            "_augment_snapshot_from_api",
-            new=AsyncMock(
-                side_effect=[
-                    IntegrationBlueprintApiClientAuthenticationError("expired"),
-                    {
-                        SNAPSHOT_PLAN_NAME: "Flipped Saver",
-                        SNAPSHOT_AMOUNT_DUE_AUD: 123.45,
-                        SNAPSHOT_USAGE_TODAY_KWH: 8.9,
-                        SNAPSHOT_USAGE_FEEDIN_YESTERDAY_KWH: 1.2,
-                        SNAPSHOT_USAGE_PERIOD_START: "2026-07-20T00:00:00",
-                        SNAPSHOT_USAGE_PERIOD_END: "2026-07-20",
-                        SNAPSHOT_TOTAL_USAGE_KWH: 321.0,
-                        SNAPSHOT_TOTAL_FEEDIN_KWH: 41.5,
-                        SNAPSHOT_IMPORT_RATE_CENTS: 29.5,
-                        SNAPSHOT_FEEDIN_RATE_CENTS: 8.0,
-                    },
-                ]
-            ),
-        ),
-    ):
-        data = await client.async_get_data()
+    await client._fetch_api_snapshot_payloads(
+        {"plan": True, "usage": True, "invoices": True}
+    )
 
-    auth_mock.assert_has_awaits([call(), call(force=True)])
-    assert data[SNAPSHOT_PLAN_NAME] == "Flipped Saver"
-    assert data["auth_ok"] is True
-    assert data["data_fresh"] is True
-    assert data["last_successful_update"]
+    urls = [call.kwargs["url"] for call in session.request.await_args_list]
+    assert urls
+    assert all(
+        url.startswith("https://mcp-api.flipped.energy/developer/v1/api/")
+        for url in urls
+    )
+    assert not [url for url in urls if "getreads" in url or "getsettlements" in url]
 
 
 async def test_extract_hourly_usage_metrics_uses_latest_completed_day() -> None:
     """Test hourly usage rows produce the latest historical usage period."""
-    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+    client = IntegrationBlueprintApiClient("fdk_test", None)
 
     snapshot = client._extract_hourly_usage_metrics(
         [
@@ -125,7 +122,7 @@ async def test_extract_hourly_usage_metrics_uses_latest_completed_day() -> None:
 
 async def test_extract_usage_totals_uses_all_rows() -> None:
     """Test weekly and monthly usage rows produce period totals."""
-    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+    client = IntegrationBlueprintApiClient("fdk_test", None)
 
     snapshot = client._extract_usage_totals(
         [
@@ -142,11 +139,11 @@ async def test_extract_usage_totals_uses_all_rows() -> None:
 
 async def test_extract_rates_includes_time_of_day_and_supply_charge() -> None:
     """Test rate extraction includes TOD blocks and daily supply charges."""
-    client = IntegrationBlueprintApiClient("user@example.com", "secret", None)
+    client = IntegrationBlueprintApiClient("fdk_test", None)
 
     snapshot = client._map_snapshot_from_known_api_payloads(
         {
-            "/MyAccount/ProjectAccountData": {
+            "/api/MyAccount/ProjectAccountData": {
                 "accounts": [
                     {
                         "accountNumber": "ACC-123456",
@@ -200,7 +197,7 @@ async def test_extract_rates_includes_time_of_day_and_supply_charge() -> None:
                     }
                 ]
             },
-            "/Usage/usage/projectreads/daily": [
+            "/api/Usage/usage/projectreads/daily": [
                 {
                     "time": "2026-07-01T00:00:00",
                     "value": 1.0,

@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import CONF_API_TOKEN, Platform
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
@@ -48,6 +49,14 @@ async def async_setup_entry(
     entry: IntegrationBlueprintConfigEntry,
 ) -> bool:
     """Set up this integration using UI."""
+    if CONF_API_TOKEN not in entry.data:
+        # Entries created before the developer API stored a portal username and
+        # password; raising here makes Home Assistant ask for a token (reauth).
+        msg = (
+            "Flipped Energy now signs in with a developer API token. Create one at "
+            "https://flipped.energy/accounts/developer and enter it to continue."
+        )
+        raise ConfigEntryAuthFailed(msg)
     refresh_interval_minutes = _refresh_interval_from_options(entry)
     current_rate_refresh_interval_minutes = _current_rate_refresh_interval_from_options(
         entry
@@ -64,8 +73,7 @@ async def async_setup_entry(
     )
     entry.runtime_data = IntegrationBlueprintData(
         client=IntegrationBlueprintApiClient(
-            username=entry.data[CONF_USERNAME],
-            password=entry.data[CONF_PASSWORD],
+            api_token=entry.data[CONF_API_TOKEN],
             session=async_get_clientsession(hass),
             enabled_pages=enabled_pages,
         ),
